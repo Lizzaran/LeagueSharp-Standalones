@@ -25,7 +25,6 @@
 using System;
 using System.IO;
 using System.Linq;
-using SFXGraves.Library;
 using SFXGraves.Library.Logger;
 
 #endregion
@@ -37,8 +36,7 @@ namespace SFXGraves
         public static string Name = "SFXGraves";
         public static ILogger Logger;
         public static string LogDir = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, Name + " - Logs");
-        public static string UpdatePath = "Lizzaran/LeagueSharp-Dev/master/Sentryfox-Standalones/SFXChallenger/SFXGraves";
-        public static Language Lang = new Language();
+        public static string UpdatePath = "Lizzaran/LeagueSharp-Standalones/master/SFXChallenger/SFXGraves";
 
         static Global()
         {

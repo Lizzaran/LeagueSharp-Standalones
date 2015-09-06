@@ -32,7 +32,7 @@ namespace SFXJungle.Features.Timers
     {
         public override string Name
         {
-            get { return Global.Lang.Get("F_App"); }
+            get { return "Timers"; }
         }
     }
 }

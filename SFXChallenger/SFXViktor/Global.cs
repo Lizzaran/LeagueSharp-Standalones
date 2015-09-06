@@ -25,7 +25,6 @@
 using System;
 using System.IO;
 using System.Linq;
-using SFXViktor.Library;
 using SFXViktor.Library.Logger;
 
 #endregion
@@ -37,8 +36,7 @@ namespace SFXViktor
         public static string Name = "SFXViktor";
         public static ILogger Logger;
         public static string LogDir = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, Name + " - Logs");
-        public static string UpdatePath = "Lizzaran/LeagueSharp-Dev/master/Sentryfox-Standalones/SFXChallenger/SFXViktor";
-        public static Language Lang = new Language();
+        public static string UpdatePath = "Lizzaran/LeagueSharp-Standalones/master/SFXChallenger/SFXViktor";
 
         static Global()
         {

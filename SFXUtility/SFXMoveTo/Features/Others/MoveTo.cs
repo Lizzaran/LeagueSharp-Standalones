@@ -43,7 +43,7 @@ namespace SFXMoveTo.Features.Others
 
         public override string Name
         {
-            get { return Global.Lang.Get("F_MoveTo"); }
+            get { return "Move To"; }
         }
 
         protected override void OnEnable()
@@ -87,11 +87,9 @@ namespace SFXMoveTo.Features.Others
             try
             {
                 Menu = new Menu(Name, Name);
-                Menu.AddItem(
-                    new MenuItem(Name + "Hotkey", Global.Lang.Get("G_Hotkey")).SetValue(
-                        new KeyBind('G', KeyBindType.Press)));
+                Menu.AddItem(new MenuItem(Name + "Hotkey", "Hotkey").SetValue(new KeyBind('G', KeyBindType.Press)));
 
-                Menu.AddItem(new MenuItem(Name + "Enabled", Global.Lang.Get("G_Enabled")).SetValue(false));
+                Menu.AddItem(new MenuItem(Name + "Enabled", "Enabled").SetValue(true));
 
                 Parent.Menu.AddSubMenu(Menu);
             }

@@ -52,7 +52,7 @@ namespace SFXRelic.Features.Timers
 
         public override string Name
         {
-            get { return Global.Lang.Get("F_Relic"); }
+            get { return "Relic"; }
         }
 
         protected override void OnEnable()
@@ -176,34 +176,30 @@ namespace SFXRelic.Features.Timers
             try
             {
                 Menu = new Menu(Name, Name);
-                var drawingMenu = new Menu(Global.Lang.Get("G_Drawing"), Name + "Drawing");
-                var drawingMapMenu = new Menu(Global.Lang.Get("G_Map"), drawingMenu.Name + "Map");
-                var drawingMinimapMenu = new Menu(Global.Lang.Get("G_Minimap"), drawingMenu.Name + "Minimap");
+                var drawingMenu = new Menu("Drawing", Name + "Drawing");
+                var drawingMapMenu = new Menu("Map", drawingMenu.Name + "Map");
+                var drawingMinimapMenu = new Menu("Minimap", drawingMenu.Name + "Minimap");
 
                 drawingMapMenu.AddItem(
-                    new MenuItem(drawingMapMenu.Name + "TimeFormat", Global.Lang.Get("G_TimeFormat")).SetValue(
+                    new MenuItem(drawingMapMenu.Name + "TimeFormat", "Time Format").SetValue(
                         new StringList(new[] { "mm:ss", "ss" })));
                 drawingMapMenu.AddItem(
-                    new MenuItem(drawingMapMenu.Name + "FontSize", Global.Lang.Get("G_FontSize")).SetValue(
-                        new Slider(20, 3, 30)));
-                drawingMapMenu.AddItem(
-                    new MenuItem(drawingMapMenu.Name + "Enabled", Global.Lang.Get("G_Enabled")).SetValue(false));
+                    new MenuItem(drawingMapMenu.Name + "FontSize", "Font Size").SetValue(new Slider(20, 3, 30)));
+                drawingMapMenu.AddItem(new MenuItem(drawingMapMenu.Name + "Enabled", "Enabled").SetValue(true));
 
                 drawingMinimapMenu.AddItem(
-                    new MenuItem(drawingMinimapMenu.Name + "TimeFormat", Global.Lang.Get("G_TimeFormat")).SetValue(
+                    new MenuItem(drawingMinimapMenu.Name + "TimeFormat", "Time Format").SetValue(
                         new StringList(new[] { "mm:ss", "ss" })));
                 drawingMinimapMenu.AddItem(
-                    new MenuItem(drawingMinimapMenu.Name + "FontSize", Global.Lang.Get("G_FontSize")).SetValue(
-                        new Slider(13, 3, 30)));
-                drawingMinimapMenu.AddItem(
-                    new MenuItem(drawingMinimapMenu.Name + "Enabled", Global.Lang.Get("G_Enabled")).SetValue(false));
+                    new MenuItem(drawingMinimapMenu.Name + "FontSize", "Font Size").SetValue(new Slider(13, 3, 30)));
+                drawingMinimapMenu.AddItem(new MenuItem(drawingMinimapMenu.Name + "Enabled", "Enabled").SetValue(true));
 
                 drawingMenu.AddSubMenu(drawingMapMenu);
                 drawingMenu.AddSubMenu(drawingMinimapMenu);
 
                 Menu.AddSubMenu(drawingMenu);
 
-                Menu.AddItem(new MenuItem(Name + "Enabled", Global.Lang.Get("G_Enabled")).SetValue(false));
+                Menu.AddItem(new MenuItem(Name + "Enabled", "Enabled").SetValue(true));
 
                 Parent.Menu.AddSubMenu(Menu);
 

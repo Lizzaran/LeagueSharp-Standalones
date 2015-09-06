@@ -43,16 +43,12 @@ namespace SFXGraves.SFXTargetSelector
             {
                 _mainMenu = mainMenu;
 
-                var humanizerMenu =
-                    _mainMenu.AddSubMenu(new Menu(Global.Lang.Get("TS_Humanizer"), _mainMenu.Name + ".humanizer"));
+                var humanizerMenu = _mainMenu.AddSubMenu(new Menu("Humanizer", _mainMenu.Name + ".humanizer"));
                 humanizerMenu.AddItem(
-                    new MenuItem(humanizerMenu.Name + ".fow", Global.Lang.Get("TS_HumanizerFoW")).SetValue(
-                        new Slider(500, 0, 1500)));
+                    new MenuItem(humanizerMenu.Name + ".fow", "FoW Delay").SetValue(new Slider(500, 0, 1500)));
                 humanizerMenu.AddItem(
-                    new MenuItem(humanizerMenu.Name + ".switch", Global.Lang.Get("TS_HumanizerSwitch")).SetValue(
-                        new Slider(500, 0, 1500)));
-                humanizerMenu.AddItem(
-                    new MenuItem(humanizerMenu.Name + ".enabled", Global.Lang.Get("G_Enabled")).SetValue(true));
+                    new MenuItem(humanizerMenu.Name + ".switch", "Switch Delay").SetValue(new Slider(500, 0, 1500)));
+                humanizerMenu.AddItem(new MenuItem(humanizerMenu.Name + ".enabled", "Enabled").SetValue(true));
             }
             catch (Exception ex)
             {

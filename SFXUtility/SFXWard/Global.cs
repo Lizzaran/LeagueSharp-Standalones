@@ -27,7 +27,6 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using SFXWard.Interfaces;
-using SFXWard.Library;
 using SFXWard.Library.Logger;
 
 #endregion
@@ -37,10 +36,9 @@ namespace SFXWard
     public class Global
     {
         public static ILogger Logger;
-        public static Language Lang = new Language();
         public static string DefaultFont = "Calibri";
         public static string Name = "SFXWard";
-        public static string UpdatePath = "Lizzaran/LeagueSharp-Dev/master/Sentryfox-Standalones/SFXUtility/SFXWard";
+        public static string UpdatePath = "Lizzaran/LeagueSharp-Standalones/master/SFXUtility/SFXWard";
         public static string BaseDir = AppDomain.CurrentDomain.BaseDirectory;
         public static string LogDir = Path.Combine(BaseDir, Name + " - Logs");
         public static string CacheDir = Path.Combine(BaseDir, Name + " - Cache");

@@ -29,7 +29,6 @@ using LeagueSharp;
 using LeagueSharp.Common;
 using SFXSivir.Abstracts;
 using SFXSivir.Enumerations;
-using SFXSivir.Events;
 using SFXSivir.Helpers;
 using SFXSivir.Library;
 using SFXSivir.Library.Logger;
@@ -61,60 +60,56 @@ namespace SFXSivir.Champions
         protected override void OnLoad()
         {
             Core.OnPostUpdate += OnCorePostUpdate;
-            TargetSpellManager.OnEnemyTargetCast += OnEnemyTargetCast;
+            Obj_AI_Base.OnProcessSpellCast += OnObjAiBaseProcessSpellCast;
             Orbwalking.AfterAttack += OnOrbwalkingAfterAttack;
         }
 
         protected override void OnUnload()
         {
             Core.OnPostUpdate -= OnCorePostUpdate;
-            TargetSpellManager.OnEnemyTargetCast -= OnEnemyTargetCast;
+            Obj_AI_Base.OnProcessSpellCast -= OnObjAiBaseProcessSpellCast;
             Orbwalking.AfterAttack -= OnOrbwalkingAfterAttack;
         }
 
         protected override void AddToMenu()
         {
-            var comboMenu = Menu.AddSubMenu(new Menu(Global.Lang.Get("G_Combo"), Menu.Name + ".combo"));
+            var comboMenu = Menu.AddSubMenu(new Menu("Combo", Menu.Name + ".combo"));
             HitchanceManager.AddToMenu(
-                comboMenu.AddSubMenu(new Menu(Global.Lang.Get("F_MH"), comboMenu.Name + ".hitchance")), "combo",
+                comboMenu.AddSubMenu(new Menu("Hitchance", comboMenu.Name + ".hitchance")), "combo",
                 new Dictionary<string, HitChance> { { "Q", HitChance.VeryHigh } });
-            comboMenu.AddItem(new MenuItem(comboMenu.Name + ".q", Global.Lang.Get("G_UseQ")).SetValue(true));
-            comboMenu.AddItem(new MenuItem(comboMenu.Name + ".w", Global.Lang.Get("G_UseW")).SetValue(true));
+            comboMenu.AddItem(new MenuItem(comboMenu.Name + ".q", "Use Q").SetValue(true));
+            comboMenu.AddItem(new MenuItem(comboMenu.Name + ".w", "Use W").SetValue(true));
 
-            var harassMenu = Menu.AddSubMenu(new Menu(Global.Lang.Get("G_Harass"), Menu.Name + ".harass"));
+            var harassMenu = Menu.AddSubMenu(new Menu("Harass", Menu.Name + ".harass"));
             HitchanceManager.AddToMenu(
-                harassMenu.AddSubMenu(new Menu(Global.Lang.Get("F_MH"), harassMenu.Name + ".hitchance")), "harass",
+                harassMenu.AddSubMenu(new Menu("Hitchance", harassMenu.Name + ".hitchance")), "harass",
                 new Dictionary<string, HitChance> { { "Q", HitChance.VeryHigh } });
             ManaManager.AddToMenu(harassMenu, "harass", ManaCheckType.Minimum, ManaValueType.Percent);
-            harassMenu.AddItem(new MenuItem(harassMenu.Name + ".q", Global.Lang.Get("G_UseQ")).SetValue(true));
-            harassMenu.AddItem(new MenuItem(harassMenu.Name + ".w", Global.Lang.Get("G_UseW")).SetValue(true));
+            harassMenu.AddItem(new MenuItem(harassMenu.Name + ".q", "Use Q").SetValue(true));
+            harassMenu.AddItem(new MenuItem(harassMenu.Name + ".w", "Use W").SetValue(true));
 
-            var laneclearMenu = Menu.AddSubMenu(new Menu(Global.Lang.Get("G_LaneClear"), Menu.Name + ".lane-clear"));
+            var laneclearMenu = Menu.AddSubMenu(new Menu("Lane Clear", Menu.Name + ".lane-clear"));
             ManaManager.AddToMenu(laneclearMenu, "lane-clear-q", ManaCheckType.Minimum, ManaValueType.Percent, "Q");
             ManaManager.AddToMenu(laneclearMenu, "lane-clear-w", ManaCheckType.Minimum, ManaValueType.Percent, "W");
             laneclearMenu.AddItem(
-                new MenuItem(laneclearMenu.Name + ".q-min", "Q " + Global.Lang.Get("G_Min")).SetValue(
-                    new Slider(3, 1, 5)));
+                new MenuItem(laneclearMenu.Name + ".q-min", "Q " + "Min").SetValue(new Slider(3, 1, 5)));
             laneclearMenu.AddItem(
-                new MenuItem(laneclearMenu.Name + ".w-min", "W " + Global.Lang.Get("G_Min")).SetValue(
-                    new Slider(3, 1, 5)));
-            laneclearMenu.AddItem(new MenuItem(laneclearMenu.Name + ".q", Global.Lang.Get("G_UseQ")).SetValue(true));
-            laneclearMenu.AddItem(new MenuItem(laneclearMenu.Name + ".w", Global.Lang.Get("G_UseW")).SetValue(true));
+                new MenuItem(laneclearMenu.Name + ".w-min", "W " + "Min").SetValue(new Slider(3, 1, 5)));
+            laneclearMenu.AddItem(new MenuItem(laneclearMenu.Name + ".q", "Use Q").SetValue(true));
+            laneclearMenu.AddItem(new MenuItem(laneclearMenu.Name + ".w", "Use W").SetValue(true));
 
-            var fleeMenu = Menu.AddSubMenu(new Menu(Global.Lang.Get("G_Flee"), Menu.Name + ".flee"));
-            fleeMenu.AddItem(new MenuItem(fleeMenu.Name + ".r", Global.Lang.Get("G_UseR")).SetValue(false));
+            var fleeMenu = Menu.AddSubMenu(new Menu("Flee", Menu.Name + ".flee"));
+            fleeMenu.AddItem(new MenuItem(fleeMenu.Name + ".r", "Use R").SetValue(false));
 
-            var shieldMenu = Menu.AddSubMenu(new Menu(Global.Lang.Get("Sivir_Shield"), Menu.Name + ".shield"));
-            TargetSpellManager.AddToMenu(
-                shieldMenu.AddSubMenu(new Menu(Global.Lang.Get("G_Whitelist"), shieldMenu.Name + ".whitelist")), false,
-                true);
-            ManaManager.AddToMenu(shieldMenu, "shield", ManaCheckType.Minimum, ManaValueType.Percent, null, 0);
-            shieldMenu.AddItem(new MenuItem(shieldMenu.Name + ".enabled", Global.Lang.Get("G_Enabled")).SetValue(true));
+            var shieldMenu = Menu.AddSubMenu(new Menu("Shield", Menu.Name + ".shield"));
+            SpellBlockManager.AddToMenu(
+                shieldMenu.AddSubMenu(new Menu("Whitelist", shieldMenu.Name + ".whitelist")), false, true, false);
+            shieldMenu.AddItem(new MenuItem(shieldMenu.Name + ".enabled", "Enabled").SetValue(true));
 
-            var miscMenu = Menu.AddSubMenu(new Menu(Global.Lang.Get("G_Miscellaneous"), Menu.Name + ".miscellaneous"));
+            var miscMenu = Menu.AddSubMenu(new Menu("Miscellaneous", Menu.Name + ".miscellaneous"));
             HeroListManager.AddToMenu(
-                miscMenu.AddSubMenu(new Menu("Q " + Global.Lang.Get("G_Immobile"), miscMenu.Name + "q-immobile")),
-                "q-immobile", false, false, true, false);
+                miscMenu.AddSubMenu(new Menu("Q " + "Immobile", miscMenu.Name + "q-immobile")), "q-immobile", false,
+                false, true, false);
 
             IndicatorManager.AddToMenu(DrawingManager.Menu, true);
             IndicatorManager.Add(Q);
@@ -132,44 +127,56 @@ namespace SFXSivir.Champions
             R = new Spell(SpellSlot.R, 1100f);
         }
 
-        private void OnEnemyTargetCast(object sender, TargetCastArgs args)
+        // Credits: Trees
+        private void OnObjAiBaseProcessSpellCast(Obj_AI_Base sender, GameObjectProcessSpellCastEventArgs args)
         {
-            try
+            if (sender == null || !sender.IsValid || !Menu.Item(Menu.Name + ".shield.enabled").GetValue<bool>())
             {
-                if (Menu.Item(Menu.Name + ".shield.enabled").GetValue<bool>() && args.Target.IsMe &&
-                    ManaManager.Check("shield"))
+                return;
+            }
+
+            var type = args.SData.TargettingType;
+            var unit = sender as Obj_AI_Hero;
+            if (unit == null || !unit.IsEnemy)
+            {
+                return;
+            }
+
+            Utility.DelayAction.Add(
+                50, () =>
                 {
-                    if (args.Type == SpellDataTargetType.SelfAoe)
+                    var blockableSpell = SpellBlockManager.Contains(unit, args, false);
+                    if (!blockableSpell || args.SData.IsAutoAttack())
+                    {
+                        return;
+                    }
+                    if ((type == SpellDataTargetType.Unit || type == SpellDataTargetType.SelfAndUnit) &&
+                        args.Target != null && args.Target.IsMe)
                     {
                         E.Cast();
                     }
-                    if (args.Type == SpellDataTargetType.Unit && args.Target != null && args.Target.IsMe)
+                    else if (unit.ChampionName.Equals("Riven") && unit.Distance(Player) < 400)
                     {
-                        var delay = (int) (Utils.SpellArrivalTime(args.Sender, Player, args.Delay, args.Speed, true)) *
-                                    1000;
-                        var ping = Game.Ping / 2000;
-                        if (delay - 200 - ping > 0)
+                        E.Cast();
+                    }
+                    else if (unit.ChampionName.Equals("Bard") && type.Equals(SpellDataTargetType.Location) &&
+                             args.End.Distance(Player.ServerPosition) < 300)
+                    {
+                        Utility.DelayAction.Add(400 + (int) (unit.Distance(Player) / 7f), () => E.Cast());
+                    }
+                    else if (type.Equals(SpellDataTargetType.SelfAoe) &&
+                             unit.Distance(Player.ServerPosition) < args.SData.CastRange + args.SData.CastRadius / 2)
+                    {
+                        E.Cast();
+                    }
+                    else if (type.Equals(SpellDataTargetType.Self))
+                    {
+                        if (unit.ChampionName.Equals("Zed") && Player.Distance(unit) < 300)
                         {
-                            Utility.DelayAction.Add(
-                                delay - 100 - ping, delegate
-                                {
-                                    if (E.IsReady())
-                                    {
-                                        E.Cast();
-                                    }
-                                });
-                        }
-                        else if (E.IsReady())
-                        {
-                            E.Cast();
+                            Utility.DelayAction.Add(200, () => E.Cast());
                         }
                     }
-                }
-            }
-            catch (Exception ex)
-            {
-                Global.Logger.AddItem(new LogItem(ex));
-            }
+                });
         }
 
         private void OnCorePostUpdate(EventArgs args)

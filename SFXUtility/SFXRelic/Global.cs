@@ -27,7 +27,6 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using SFXRelic.Interfaces;
-using SFXRelic.Library;
 using SFXRelic.Library.Logger;
 
 #endregion
@@ -37,10 +36,9 @@ namespace SFXRelic
     public class Global
     {
         public static ILogger Logger;
-        public static Language Lang = new Language();
         public static string DefaultFont = "Calibri";
         public static string Name = "SFXRelic";
-        public static string UpdatePath = "Lizzaran/LeagueSharp-Dev/master/Sentryfox-Standalones/SFXUtility/SFXRelic";
+        public static string UpdatePath = "Lizzaran/LeagueSharp-Standalones/master/SFXUtility/SFXRelic";
         public static string BaseDir = AppDomain.CurrentDomain.BaseDirectory;
         public static string LogDir = Path.Combine(BaseDir, Name + " - Logs");
         public static string CacheDir = Path.Combine(BaseDir, Name + " - Cache");

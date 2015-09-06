@@ -36,9 +36,8 @@ namespace SFXKogMaw.Menus
         {
             try
             {
-                menu.AddItem(
-                    new MenuItem(menu.Name + ".tick", Global.Lang.Get("F_Tick")).SetValue(new Slider(100, 1, 300)))
-                    .ValueChanged +=
+                menu.AddItem(new MenuItem(menu.Name + ".tick", "Tick").SetValue(new Slider(100, 1, 300))).ValueChanged
+                    +=
                     delegate(object sender, OnValueChangeEventArgs args)
                     {
                         Core.SetInterval(args.GetNewValue<Slider>().Value);

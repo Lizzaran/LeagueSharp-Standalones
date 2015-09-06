@@ -288,28 +288,18 @@ namespace SFXKogMaw.Abstracts
             {
                 SFXMenu = new Menu(Global.Name, "sfx", true);
 
-                Menu = SFXMenu.AddSubMenu(new Menu(Player.ChampionName, "." + Player.ChampionName));
+                Menu = SFXMenu.AddSubMenu(new Menu(Player.ChampionName, /*SFXMenu.Name +*/ "." + Player.ChampionName));
 
-                DrawingManager.AddToMenu(
-                    Menu.AddSubMenu(new Menu(Global.Lang.Get("G_Drawing"), Menu.Name + ".drawing")), this);
+                DrawingManager.AddToMenu(Menu.AddSubMenu(new Menu("Drawing", Menu.Name + ".drawing")), this);
 
-                TargetSelector.AddToMenu(
-                    SFXMenu.AddSubMenu(new Menu(Global.Lang.Get("F_TargetSelector"), SFXMenu.Name + ".ts")));
+                TargetSelector.AddToMenu(SFXMenu.AddSubMenu(new Menu("Target Selector", SFXMenu.Name + ".ts")));
 
-                Orbwalker =
-                    new Orbwalking.Orbwalker(
-                        SFXMenu.AddSubMenu(new Menu(Global.Lang.Get("F_Orbwalker"), SFXMenu.Name + ".orb")));
-                KillstealManager.AddToMenu(
-                    SFXMenu.AddSubMenu(new Menu(Global.Lang.Get("F_MK"), SFXMenu.Name + ".killsteal")));
-                ItemManager.AddToMenu(
-                    SFXMenu.AddSubMenu(new Menu(Global.Lang.Get("F_MI"), SFXMenu.Name + ".items")), ItemFlags);
-                SummonerManager.AddToMenu(
-                    SFXMenu.AddSubMenu(new Menu(Global.Lang.Get("F_MS"), SFXMenu.Name + ".summoners")));
+                Orbwalker = new Orbwalking.Orbwalker(SFXMenu.AddSubMenu(new Menu("Orbwalker", SFXMenu.Name + ".orb")));
+                KillstealManager.AddToMenu(SFXMenu.AddSubMenu(new Menu("Killsteal", SFXMenu.Name + ".killsteal")));
+                ItemManager.AddToMenu(SFXMenu.AddSubMenu(new Menu("Items", SFXMenu.Name + ".items")), ItemFlags);
+                SummonerManager.AddToMenu(SFXMenu.AddSubMenu(new Menu("Summoners", SFXMenu.Name + ".summoners")));
 
-                LanguageMenu.AddToMenu(
-                    SFXMenu.AddSubMenu(new Menu(Global.Lang.Get("F_Settings"), SFXMenu.Name + ".settings")));
-
-                InfoMenu.AddToMenu(SFXMenu.AddSubMenu(new Menu(Global.Lang.Get("F_Info"), SFXMenu.Name + ".info")));
+                InfoMenu.AddToMenu(SFXMenu.AddSubMenu(new Menu("Info", SFXMenu.Name + ".info")));
 
                 DebugMenu.AddToMenu(SFXMenu, Spells);
 

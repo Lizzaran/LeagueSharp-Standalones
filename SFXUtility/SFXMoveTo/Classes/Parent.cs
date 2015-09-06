@@ -48,7 +48,7 @@ namespace SFXMoveTo.Classes
             {
                 Menu = new Menu(Name, Name);
 
-                Menu.AddItem(new MenuItem(Name + "Enabled", Global.Lang.Get("G_Enabled")).SetValue(false));
+                Menu.AddItem(new MenuItem(Name + "Enabled", "Enabled").SetValue(true));
 
                 Global.SFX.Menu.AddSubMenu(Menu);
 

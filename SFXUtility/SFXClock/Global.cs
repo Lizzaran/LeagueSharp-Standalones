@@ -27,7 +27,6 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using SFXClock.Interfaces;
-using SFXClock.Library;
 using SFXClock.Library.Logger;
 
 #endregion
@@ -37,10 +36,9 @@ namespace SFXClock
     public class Global
     {
         public static ILogger Logger;
-        public static Language Lang = new Language();
         public static string DefaultFont = "Calibri";
         public static string Name = "SFXClock";
-        public static string UpdatePath = "Lizzaran/LeagueSharp-Dev/master/Sentryfox-Standalones/SFXUtility/SFXClock";
+        public static string UpdatePath = "Lizzaran/LeagueSharp-Standalones/master/SFXUtility/SFXClock";
         public static string BaseDir = AppDomain.CurrentDomain.BaseDirectory;
         public static string LogDir = Path.Combine(BaseDir, Name + " - Logs");
         public static string CacheDir = Path.Combine(BaseDir, Name + " - Cache");

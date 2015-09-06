@@ -25,7 +25,6 @@
 using System;
 using System.IO;
 using System.Linq;
-using SFXTwistedFate.Library;
 using SFXTwistedFate.Library.Logger;
 
 #endregion
@@ -37,8 +36,7 @@ namespace SFXTwistedFate
         public static string Name = "SFXTwistedFate";
         public static ILogger Logger;
         public static string LogDir = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, Name + " - Logs");
-        public static string UpdatePath = "Lizzaran/LeagueSharp-Dev/master/Sentryfox-Standalones/SFXChallenger/SFXTwistedFate";
-        public static Language Lang = new Language();
+        public static string UpdatePath = "Lizzaran/LeagueSharp-Standalones/master/SFXChallenger/SFXTwistedFate";
 
         static Global()
         {

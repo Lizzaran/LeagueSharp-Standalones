@@ -27,7 +27,6 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using SFXGank.Interfaces;
-using SFXGank.Library;
 using SFXGank.Library.Logger;
 
 #endregion
@@ -37,10 +36,9 @@ namespace SFXGank
     public class Global
     {
         public static ILogger Logger;
-        public static Language Lang = new Language();
         public static string DefaultFont = "Calibri";
         public static string Name = "SFXGank";
-        public static string UpdatePath = "Lizzaran/LeagueSharp-Dev/master/Sentryfox-Standalones/SFXUtility/SFXGank";
+        public static string UpdatePath = "Lizzaran/LeagueSharp-Standalones/master/SFXUtility/SFXGank";
         public static string BaseDir = AppDomain.CurrentDomain.BaseDirectory;
         public static string LogDir = Path.Combine(BaseDir, Name + " - Logs");
         public static string CacheDir = Path.Combine(BaseDir, Name + " - Cache");

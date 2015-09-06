@@ -2,7 +2,7 @@
 
 /*
  Copyright 2014 - 2015 Nikita Bernthaler
- delaymanager.cs is part of SFXOrianna.
+ DelayManager.cs is part of SFXOrianna.
 
  SFXOrianna is free software: you can redistribute it and/or modify
  it under the terms of the GNU General Public License as published by
@@ -46,8 +46,8 @@ namespace SFXOrianna.Managers
                 }
 
                 menu.AddItem(
-                    new MenuItem(menu.Name + ".delay-manager." + uniqueId, prefix + " " + Global.Lang.Get("G_Delay"))
-                        .SetValue(new Slider(value, min, max)));
+                    new MenuItem(menu.Name + ".delay-manager." + uniqueId, prefix + " Delay").SetValue(
+                        new Slider(value, min, max)));
 
                 Menues[uniqueId] = menu;
             }

@@ -25,7 +25,6 @@
 using System;
 using System.IO;
 using System.Linq;
-using SFXKalista.Library;
 using SFXKalista.Library.Logger;
 
 #endregion
@@ -37,8 +36,7 @@ namespace SFXKalista
         public static string Name = "SFXKalista";
         public static ILogger Logger;
         public static string LogDir = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, Name + " - Logs");
-        public static string UpdatePath = "Lizzaran/LeagueSharp-Dev/master/Sentryfox-Standalones/SFXChallenger/SFXKalista";
-        public static Language Lang = new Language();
+        public static string UpdatePath = "Lizzaran/LeagueSharp-Standalones/master/SFXChallenger/SFXKalista";
 
         static Global()
         {

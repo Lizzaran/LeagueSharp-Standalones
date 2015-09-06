@@ -25,7 +25,6 @@
 using System;
 using System.IO;
 using System.Linq;
-using SFXTwitch.Library;
 using SFXTwitch.Library.Logger;
 
 #endregion
@@ -37,8 +36,7 @@ namespace SFXTwitch
         public static string Name = "SFXTwitch";
         public static ILogger Logger;
         public static string LogDir = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, Name + " - Logs");
-        public static string UpdatePath = "Lizzaran/LeagueSharp-Dev/master/Sentryfox-Standalones/SFXChallenger/SFXTwitch";
-        public static Language Lang = new Language();
+        public static string UpdatePath = "Lizzaran/LeagueSharp-Standalones/master/SFXChallenger/SFXTwitch";
 
         static Global()
         {

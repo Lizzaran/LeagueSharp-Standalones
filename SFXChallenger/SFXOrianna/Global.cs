@@ -25,7 +25,6 @@
 using System;
 using System.IO;
 using System.Linq;
-using SFXOrianna.Library;
 using SFXOrianna.Library.Logger;
 
 #endregion
@@ -37,8 +36,7 @@ namespace SFXOrianna
         public static string Name = "SFXOrianna";
         public static ILogger Logger;
         public static string LogDir = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, Name + " - Logs");
-        public static string UpdatePath = "Lizzaran/LeagueSharp-Dev/master/Sentryfox-Standalones/SFXChallenger/SFXOrianna";
-        public static Language Lang = new Language();
+        public static string UpdatePath = "Lizzaran/LeagueSharp-Standalones/master/SFXChallenger/SFXOrianna";
 
         static Global()
         {

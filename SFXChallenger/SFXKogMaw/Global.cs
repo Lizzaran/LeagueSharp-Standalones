@@ -25,7 +25,6 @@
 using System;
 using System.IO;
 using System.Linq;
-using SFXKogMaw.Library;
 using SFXKogMaw.Library.Logger;
 
 #endregion
@@ -37,8 +36,7 @@ namespace SFXKogMaw
         public static string Name = "SFXKogMaw";
         public static ILogger Logger;
         public static string LogDir = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, Name + " - Logs");
-        public static string UpdatePath = "Lizzaran/LeagueSharp-Dev/master/Sentryfox-Standalones/SFXChallenger/SFXKogMaw";
-        public static Language Lang = new Language();
+        public static string UpdatePath = "Lizzaran/LeagueSharp-Standalones/master/SFXChallenger/SFXKogMaw";
 
         static Global()
         {

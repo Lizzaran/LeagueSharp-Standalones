@@ -59,9 +59,7 @@ namespace SFXTwitch.Managers
                     new MenuItem(
                         menu.Name + ".health-" + uniqueId,
                         (!string.IsNullOrEmpty(prefix) ? prefix + " " : string.Empty) +
-                        (checkType == HealthCheckType.Minimum
-                            ? Global.Lang.Get("MH_MinHealth")
-                            : Global.Lang.Get("MH_MaxHealth")) +
+                        (checkType == HealthCheckType.Minimum ? "Min. Health" : "Max. Health") +
                         (valueType == HealthValueType.Percent ? " %" : string.Empty)).SetValue(
                             new Slider(value, minValue, maxValue)));
 

@@ -52,11 +52,7 @@ namespace SFXTwitch.Managers
                     menu.AddItem(
                         new MenuItem(menu.Name + "." + hit.Key.ToLower(), hit.Key.ToUpper()).SetValue(
                             new StringList(
-                                new[]
-                                {
-                                    Global.Lang.Get("MH_Medium"), Global.Lang.Get("MH_High"),
-                                    Global.Lang.Get("MH_VeryHigh")
-                                },
+                                new[] { "Medium", "High", "Very High" },
                                 hit.Value == HitChance.Medium ? 0 : (hit.Value == HitChance.High ? 1 : 2))));
                 }
 

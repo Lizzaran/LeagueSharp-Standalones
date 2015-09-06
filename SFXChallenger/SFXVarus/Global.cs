@@ -25,7 +25,6 @@
 using System;
 using System.IO;
 using System.Linq;
-using SFXVarus.Library;
 using SFXVarus.Library.Logger;
 
 #endregion
@@ -37,8 +36,7 @@ namespace SFXVarus
         public static string Name = "SFXVarus";
         public static ILogger Logger;
         public static string LogDir = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, Name + " - Logs");
-        public static string UpdatePath = "Lizzaran/LeagueSharp-Dev/master/Sentryfox-Standalones/SFXChallenger/SFXVarus";
-        public static Language Lang = new Language();
+        public static string UpdatePath = "Lizzaran/LeagueSharp-Standalones/master/SFXChallenger/SFXVarus";
 
         static Global()
         {

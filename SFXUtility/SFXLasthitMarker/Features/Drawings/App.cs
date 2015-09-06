@@ -32,7 +32,7 @@ namespace SFXLasthitMarker.Features.Drawings
     {
         public override string Name
         {
-            get { return Global.Lang.Get("F_App"); }
+            get { return "Drawings"; }
         }
     }
 }

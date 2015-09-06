@@ -2,7 +2,7 @@
 
 /*
  Copyright 2014 - 2015 Nikita Bernthaler
- delaymanager.cs is part of SFXKalista.
+ DelayManager.cs is part of SFXKalista.
 
  SFXKalista is free software: you can redistribute it and/or modify
  it under the terms of the GNU General Public License as published by
@@ -46,8 +46,8 @@ namespace SFXKalista.Managers
                 }
 
                 menu.AddItem(
-                    new MenuItem(menu.Name + ".delay-manager." + uniqueId, prefix + " " + Global.Lang.Get("G_Delay"))
-                        .SetValue(new Slider(value, min, max)));
+                    new MenuItem(menu.Name + ".delay-manager." + uniqueId, prefix + " Delay").SetValue(
+                        new Slider(value, min, max)));
 
                 Menues[uniqueId] = menu;
             }

@@ -45,7 +45,7 @@ namespace SFXAutoLantern.Features.Others
 
         public override string Name
         {
-            get { return Global.Lang.Get("F_AutoLantern"); }
+            get { return "Auto Lantern"; }
         }
 
         protected override void OnEnable()
@@ -69,14 +69,10 @@ namespace SFXAutoLantern.Features.Others
             try
             {
                 Menu = new Menu(Name, Name);
-                Menu.AddItem(
-                    new MenuItem(Name + "Percent", Global.Lang.Get("G_Health") + " " + Global.Lang.Get("G_Percent"))
-                        .SetValue(new Slider(20, 0, 50)));
-                Menu.AddItem(
-                    new MenuItem(Name + "Hotkey", Global.Lang.Get("G_Hotkey")).SetValue(
-                        new KeyBind('U', KeyBindType.Press)));
+                Menu.AddItem(new MenuItem(Name + "Percent", "Health Percent").SetValue(new Slider(20, 0, 50)));
+                Menu.AddItem(new MenuItem(Name + "Hotkey", "Hotkey").SetValue(new KeyBind('U', KeyBindType.Press)));
 
-                Menu.AddItem(new MenuItem(Name + "Enabled", Global.Lang.Get("G_Enabled")).SetValue(false));
+                Menu.AddItem(new MenuItem(Name + "Enabled", "Enabled").SetValue(true));
 
                 Parent.Menu.AddSubMenu(Menu);
             }

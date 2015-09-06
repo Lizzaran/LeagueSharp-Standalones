@@ -25,7 +25,6 @@
 using System;
 using System.IO;
 using System.Linq;
-using SFXCorki.Library;
 using SFXCorki.Library.Logger;
 
 #endregion
@@ -37,8 +36,7 @@ namespace SFXCorki
         public static string Name = "SFXCorki";
         public static ILogger Logger;
         public static string LogDir = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, Name + " - Logs");
-        public static string UpdatePath = "Lizzaran/LeagueSharp-Dev/master/Sentryfox-Standalones/SFXChallenger/SFXCorki";
-        public static Language Lang = new Language();
+        public static string UpdatePath = "Lizzaran/LeagueSharp-Standalones/master/SFXChallenger/SFXCorki";
 
         static Global()
         {

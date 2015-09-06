@@ -32,7 +32,7 @@ namespace SFXTeleport.Features.Detectors
     {
         public override string Name
         {
-            get { return Global.Lang.Get("F_App"); }
+            get { return "Detectors"; }
         }
     }
 }

@@ -45,7 +45,7 @@ namespace SFXKillSteal.Features.Activators
 
         public override string Name
         {
-            get { return Global.Lang.Get("F_KillSteal"); }
+            get { return "KillSteal"; }
         }
 
         protected override void OnEnable()
@@ -65,10 +65,10 @@ namespace SFXKillSteal.Features.Activators
             try
             {
                 Menu = new Menu(Name, Name);
-                Menu.AddItem(new MenuItem(Name + "Summoners", Global.Lang.Get("KillSteal_Summoners")).SetValue(false));
-                Menu.AddItem(new MenuItem(Name + "Items", Global.Lang.Get("KillSteal_Items")).SetValue(false));
+                Menu.AddItem(new MenuItem(Name + "Summoners", "Summoners").SetValue(false));
+                Menu.AddItem(new MenuItem(Name + "Items", "Items").SetValue(false));
 
-                Menu.AddItem(new MenuItem(Name + "Enabled", Global.Lang.Get("G_Enabled")).SetValue(false));
+                Menu.AddItem(new MenuItem(Name + "Enabled", "Enabled").SetValue(true));
 
                 Parent.Menu.AddSubMenu(Menu);
             }
