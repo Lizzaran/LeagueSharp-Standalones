@@ -1,4 +1,4 @@
-Standalones
+SFXUtility & SFXChallenger Standalones
 ===========
 
 License
