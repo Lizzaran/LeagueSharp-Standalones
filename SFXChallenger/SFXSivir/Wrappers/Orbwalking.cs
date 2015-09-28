@@ -86,7 +86,11 @@ namespace SFXSivir.Wrappers
         {
             "jarvanivcataclysmattack", "monkeykingdoubleattack",
             "shyvanadoubleattack", "shyvanadoubleattackdragon", "zyragraspingplantattack", "zyragraspingplantattack2",
-            "zyragraspingplantattackfire", "zyragraspingplantattack2fire", "viktorpowertransfer", "sivirwattackbounce"
+            "zyragraspingplantattackfire", "zyragraspingplantattack2fire", "viktorpowertransfer", "sivirwattackbounce",
+            "asheqattacknoonhit", "elisespiderlingbasicattack", "heimertyellowbasicattack", "heimertyellowbasicattack2",
+            "heimertbluebasicattack", "annietibbersbasicattack", "annietibbersbasicattack2",
+            "yorickdecayedghoulbasicattack", "yorickravenousghoulbasicattack", "yorickspectralghoulbasicattack",
+            "malzaharvoidlingbasicattack", "malzaharvoidlingbasicattack2", "malzaharvoidlingbasicattack3"
         };
 
         //Spells that are attacks even if they dont have the "attack" word in their name.
@@ -111,7 +115,6 @@ namespace SFXSivir.Wrappers
         private static float _minDistance = 400;
         private static bool _missileLaunched;
         private static readonly Random Random = new Random(DateTime.Now.Millisecond);
-        private static bool _preventStuttering;
         private static readonly Dictionary<OrbwalkingDelay, Delay> Delays = new Dictionary<OrbwalkingDelay, Delay>();
 
         static Orbwalking()
@@ -226,20 +229,7 @@ namespace SFXSivir.Wrappers
             {
                 result += target.BoundingRadius;
             }
-            if (_preventStuttering)
-            {
-                var hero = target as Obj_AI_Hero;
-                if (hero != null && !hero.IsFacing(Player))
-                {
-                    result -= 10;
-                }
-            }
             return result;
-        }
-
-        public static void PreventStuttering(bool val)
-        {
-            _preventStuttering = val;
         }
 
         /// <summary>
@@ -263,13 +253,16 @@ namespace SFXSivir.Wrappers
         /// </summary>
         public static float GetMyProjectileSpeed()
         {
-            return IsMelee(Player) || Player.ChampionName == "Azir" ? float.MaxValue : Player.BasicAttack.MissileSpeed;
+            return IsMelee(Player) || Player.ChampionName == "Azir" ||
+                   Player.ChampionName == "Viktor" && Player.HasBuff("ViktorPowerTransferReturn")
+                ? float.MaxValue
+                : Player.BasicAttack.MissileSpeed;
         }
 
         /// <summary>
         ///     Returns if the player's auto-attack is ready.
         /// </summary>
-        public static bool CanAttack(float extraDelay = 0f)
+        public static bool CanAttack(float extraDelay)
         {
             return Utils.GameTimeTickCount + Game.Ping / 2 + 25 >= LastAaTick + Player.AttackDelay * 1000 + extraDelay &&
                    Attack;
@@ -290,8 +283,15 @@ namespace SFXSivir.Wrappers
                 return true;
             }
 
+            var localExtraWindup = 0;
+            if (Player.ChampionName == "Rengar" && (Player.HasBuff("rengarqbase") || Player.HasBuff("rengarqemp")))
+            {
+                localExtraWindup = 200;
+            }
+
             return NoCancelChamps.Contains(Player.ChampionName) ||
-                   (Utils.GameTimeTickCount + Game.Ping / 2 >= LastAaTick + Player.AttackCastDelay * 1000 + extraWindup);
+                   (Utils.GameTimeTickCount + Game.Ping / 2 >=
+                    LastAaTick + Player.AttackCastDelay * 1000 + extraWindup + localExtraWindup);
         }
 
         public static void SetDelay(float value, OrbwalkingDelay delay)
@@ -333,16 +333,16 @@ namespace SFXSivir.Wrappers
             }
         }
 
-        public static void SetDelayFrequency(float value, OrbwalkingDelay delay)
+        public static void SetDelayProbability(float value, OrbwalkingDelay delay)
         {
             Delay delayEntry;
             if (Delays.TryGetValue(delay, out delayEntry))
             {
-                delayEntry.Frequency = value;
+                delayEntry.Probability = value;
             }
             else
             {
-                Delays[delay] = new Delay { Frequency = value };
+                Delays[delay] = new Delay { Probability = value };
             }
         }
 
@@ -361,7 +361,7 @@ namespace SFXSivir.Wrappers
 
         private static void SetCurrentDelay(Delay delay)
         {
-            if (delay.Randomize && Random.Next(0, 101) >= (100 - delay.Frequency))
+            if (delay.Randomize && Random.Next(0, 101) >= (100 - delay.Probability))
             {
                 var min = (delay.Default / 100f) * delay.MinDelay;
                 var max = (delay.Default / 100f) * delay.MaxDelay;
@@ -465,13 +465,10 @@ namespace SFXSivir.Wrappers
                                          (int) (ObjectManager.Player.AttackCastDelay * 1000f);
                             _missileLaunched = false;
 
-                            if (!IsMelee(Player))
+                            var d = GetRealAutoAttackRange(target) - 65;
+                            if (Player.Distance(target, true) > d * d && !Player.IsMelee)
                             {
-                                var d = GetRealAutoAttackRange(target) - 65;
-                                if (Player.Distance(target, true) > d * d)
-                                {
-                                    LastAaTick += 300;
-                                }
+                                LastAaTick += 300;
                             }
                         }
 
@@ -514,6 +511,7 @@ namespace SFXSivir.Wrappers
             if (missile != null && missile.SpellCaster.IsMe && IsAutoAttack(missile.SData.Name))
             {
                 _missileLaunched = true;
+                FireAfterAttack(missile.SpellCaster, missile.Target as AttackableUnit);
             }
         }
 
@@ -539,18 +537,20 @@ namespace SFXSivir.Wrappers
                     LastAaTick = Utils.GameTimeTickCount - Game.Ping / 2;
                     _missileLaunched = false;
 
-                    var target = spell.Target as Obj_AI_Base;
-                    if (target != null)
+                    var objBase = spell.Target as Obj_AI_Base;
+                    if (objBase != null)
                     {
-                        if (target.IsValid)
+                        if (objBase.IsValid)
                         {
-                            FireOnTargetSwitch(target);
-                            _lastTarget = target;
+                            FireOnTargetSwitch(objBase);
+                            _lastTarget = objBase;
                         }
 
-                        //Trigger it for ranged until the missiles catch normal attacks again!
-                        Utility.DelayAction.Add(
-                            (int) (unit.AttackCastDelay * 1000 + 40), () => FireAfterAttack(unit, _lastTarget));
+                        if (unit.IsMelee)
+                        {
+                            Utility.DelayAction.Add(
+                                (int) (unit.AttackCastDelay * 1000 + 40), () => FireAfterAttack(unit, _lastTarget));
+                        }
                     }
                 }
 
@@ -587,6 +587,15 @@ namespace SFXSivir.Wrappers
         {
             private const float LaneClearWaitTimeMod = 2f;
             private static Menu _config;
+            private readonly Dictionary<string, bool> _attackableObjects = new Dictionary<string, bool>();
+            private readonly string[] _attackleCloneChamps = { "Shaco", "LeBlanc", "Wukong" };
+
+            private readonly string[] _attackleObjectChamps =
+            {
+                "Zyra", "Heimerdinger", "Shaco", "Teemo", "Gangplank",
+                "Annie", "Yorick", "Mordekaiser"
+            };
+
             private Obj_AI_Base _forcedTarget;
             private OrbwalkingMode _mode = OrbwalkingMode.None;
             private Vector3 _orbwalkingPoint;
@@ -598,129 +607,101 @@ namespace SFXSivir.Wrappers
                 /* Drawings submenu */
                 var drawings = new Menu("Drawings", "drawings");
                 drawings.AddItem(
-                    new MenuItem("AACircle", "AACircle").SetShared()
-                        .SetValue(new Circle(true, Color.FromArgb(255, 255, 0, 255))));
+                    new MenuItem("CircleThickness", "Circle Thickness").SetShared().SetValue(new Slider(5, 1, 10)));
                 drawings.AddItem(
-                    new MenuItem("AACircle2", "Enemy AA circle").SetShared()
+                    new MenuItem("AACircle", "AA Circle").SetShared()
                         .SetValue(new Circle(false, Color.FromArgb(255, 255, 0, 255))));
                 drawings.AddItem(
-                    new MenuItem("HoldZone", "HoldZone").SetShared()
+                    new MenuItem("AACircle2", "Enemy AA Circle").SetShared()
+                        .SetValue(new Circle(false, Color.FromArgb(255, 255, 0, 255))));
+                drawings.AddItem(
+                    new MenuItem("HoldZone", "Hold Zone").SetShared()
                         .SetValue(new Circle(false, Color.FromArgb(255, 255, 0, 255))));
                 _config.AddSubMenu(drawings);
 
-                /* Misc options */
-                var misc = new Menu("Misc", "Misc");
-                misc.AddItem(
-                    new MenuItem("HoldPosRadius", "Hold Position Radius").SetShared().SetValue(new Slider(0, 0, 250)));
-                misc.AddItem(new MenuItem("PriorizeFarm", "Priorize farm over harass").SetShared().SetValue(true));
-
-                _config.AddSubMenu(misc);
-
-                var delays = new Menu("Delays", "Delays");
-                delays.AddItem(new MenuItem("ExtraWindup", "Windup Delay").SetShared().SetValue(new Slider(80, 0, 200)));
-                delays.AddItem(new MenuItem("FarmDelay", "Farm Delay").SetShared().SetValue(new Slider(0, 0, 200)));
-
-                var delayMovement = new Menu("Movement", "Movement");
-                delayMovement.AddItem(
-                    new MenuItem("MovementDelay", "Delay").SetShared().SetValue(new Slider(25, 0, 250))).ValueChanged +=
-                    delegate(object sender, OnValueChangeEventArgs args)
-                    {
-                        SetDelay(args.GetNewValue<Slider>().Value, OrbwalkingDelay.Move);
-                    };
-                delayMovement.AddItem(
-                    new MenuItem("MovementMinDelay", "Min. % Delay").SetShared().SetValue(new Slider(170, 100, 300)))
-                    .ValueChanged +=
-                    delegate(object sender, OnValueChangeEventArgs args)
-                    {
-                        SetMinDelay(args.GetNewValue<Slider>().Value, OrbwalkingDelay.Move);
-                    };
-                delayMovement.AddItem(
-                    new MenuItem("MovementMaxDelay", "Max. % Delay").SetShared().SetValue(new Slider(220, 100, 300)))
-                    .ValueChanged +=
-                    delegate(object sender, OnValueChangeEventArgs args)
-                    {
-                        SetMaxDelay(args.GetNewValue<Slider>().Value, OrbwalkingDelay.Move);
-                    };
-                delayMovement.AddItem(
-                    new MenuItem("MovementFrequency", "Frequency %").SetShared().SetValue(new Slider(30))).ValueChanged
-                    +=
-                    delegate(object sender, OnValueChangeEventArgs args)
-                    {
-                        SetDelayFrequency(args.GetNewValue<Slider>().Value, OrbwalkingDelay.Move);
-                    };
-                delayMovement.AddItem(new MenuItem("MovementRandomize", "Randomize").SetShared().SetValue(false))
-                    .ValueChanged +=
-                    delegate(object sender, OnValueChangeEventArgs args)
-                    {
-                        SetDelayRandomize(args.GetNewValue<bool>(), OrbwalkingDelay.Move);
-                    };
-
-                var delayAttack = new Menu("Attack", "Attack");
-                delayAttack.AddItem(new MenuItem("AttackDelay", "Delay").SetShared().SetValue(new Slider(25, 0, 250)))
-                    .ValueChanged +=
-                    delegate(object sender, OnValueChangeEventArgs args)
-                    {
-                        SetDelay(args.GetNewValue<Slider>().Value, OrbwalkingDelay.Attack);
-                    };
-                delayAttack.AddItem(
-                    new MenuItem("AttackMinDelay", "Min. % Delay").SetShared().SetValue(new Slider(170, 100, 300)))
-                    .ValueChanged +=
-                    delegate(object sender, OnValueChangeEventArgs args)
-                    {
-                        SetMinDelay(args.GetNewValue<Slider>().Value, OrbwalkingDelay.Attack);
-                    };
-                delayAttack.AddItem(
-                    new MenuItem("AttackMaxDelay", "Max. % Delay").SetShared().SetValue(new Slider(220, 100, 300)))
-                    .ValueChanged +=
-                    delegate(object sender, OnValueChangeEventArgs args)
-                    {
-                        SetMaxDelay(args.GetNewValue<Slider>().Value, OrbwalkingDelay.Attack);
-                    };
-                delayAttack.AddItem(new MenuItem("AttackFrequency", "Frequency %").SetShared().SetValue(new Slider(30)))
-                    .ValueChanged +=
-                    delegate(object sender, OnValueChangeEventArgs args)
-                    {
-                        SetDelayFrequency(args.GetNewValue<Slider>().Value, OrbwalkingDelay.Attack);
-                    };
-                delayAttack.AddItem(new MenuItem("AttackRandomize", "Randomize").SetShared().SetValue(false))
-                    .ValueChanged +=
-                    delegate(object sender, OnValueChangeEventArgs args)
-                    {
-                        SetDelayRandomize(args.GetNewValue<bool>(), OrbwalkingDelay.Attack);
-                    };
-
-                delays.AddSubMenu(delayMovement);
-                delays.AddSubMenu(delayAttack);
-
-                _config.AddSubMenu(delays);
-
                 var attackables = new Menu("Attackable Objects", "Attackables");
-                attackables.AddItem(new MenuItem("AttackWard", "Ward").SetShared().SetValue(true));
-                attackables.AddItem(new MenuItem("AttackZyra", "Zyra Plant").SetShared().SetValue(true));
-                attackables.AddItem(new MenuItem("AttackHeimer", "Heimer Turret").SetShared().SetValue(true));
-                attackables.AddItem(new MenuItem("AttackShaco", "Shaco Box").SetShared().SetValue(true));
-                attackables.AddItem(new MenuItem("AttackTeemo", "Teemo Shroom").SetShared().SetValue(true));
-                attackables.AddItem(new MenuItem("AttackGangplank", "Gangplank Barrel").SetShared().SetValue(true));
-                attackables.AddItem(new MenuItem("AttackAnnie", "Annie Tibbers").SetShared().SetValue(true));
-                attackables.AddItem(new MenuItem("AttackYorick", "Yorick Ghost").SetShared().SetValue(true));
-                attackables.AddItem(new MenuItem("AttackMordekaiser", "Mordekaiser Ghost").SetShared().SetValue(true));
-                attackables.AddItem(new MenuItem("AttackClone", "Clones").SetShared().SetValue(true));
+                attackables.AddItem(new MenuItem("AttackWard", "Ward").SetShared().SetValue(true)).ValueChanged +=
+                    (sender, args) => SetAttackableObject("ward", args.GetNewValue<bool>());
+                attackables.AddItem(new MenuItem("AttackZyra", "Zyra Plant").SetShared().SetValue(true)).ValueChanged +=
+                    (sender, args) => SetAttackableObject("zyra", args.GetNewValue<bool>());
+                attackables.AddItem(new MenuItem("AttackHeimerdinger", "Heimer Turret").SetShared().SetValue(true))
+                    .ValueChanged += (sender, args) => SetAttackableObject("heimerdinger", args.GetNewValue<bool>());
+                attackables.AddItem(new MenuItem("AttackShaco", "Shaco Box").SetShared().SetValue(true)).ValueChanged +=
+                    (sender, args) => SetAttackableObject("shaco", args.GetNewValue<bool>());
+                attackables.AddItem(new MenuItem("AttackTeemo", "Teemo Shroom").SetShared().SetValue(true)).ValueChanged
+                    += (sender, args) => SetAttackableObject("teemo", args.GetNewValue<bool>());
+                attackables.AddItem(new MenuItem("AttackGangplank", "Gangplank Barrel").SetShared().SetValue(true))
+                    .ValueChanged += (sender, args) => SetAttackableObject("gangplank", args.GetNewValue<bool>());
+                attackables.AddItem(new MenuItem("AttackAnnie", "Annie Tibbers").SetShared().SetValue(true))
+                    .ValueChanged += (sender, args) => SetAttackableObject("annie", args.GetNewValue<bool>());
+                attackables.AddItem(new MenuItem("AttackYorick", "Yorick Ghost").SetShared().SetValue(true))
+                    .ValueChanged += (sender, args) => SetAttackableObject("yorick", args.GetNewValue<bool>());
+                attackables.AddItem(new MenuItem("AttackMordekaiser", "Mordekaiser Ghost").SetShared().SetValue(true))
+                    .ValueChanged += (sender, args) => SetAttackableObject("mordekaiser", args.GetNewValue<bool>());
+                attackables.AddItem(new MenuItem("AttackClone", "Clones").SetShared().SetValue(true)).ValueChanged +=
+                    (sender, args) => SetAttackableObject("clone", args.GetNewValue<bool>());
 
                 _config.AddSubMenu(attackables);
 
-                /* Missile check */
-                _config.AddItem(new MenuItem("MissileCheck", "Missile Check").SetShared().SetValue(true));
+                var delays = new Menu("Delays", "Delays");
+                delays.AddItem(new MenuItem("ExtraWindup", "Windup Delay").SetShared().SetValue(new Slider(70, 0, 200)));
+
+                delays.AddItem(
+                    new MenuItem("MovementDelay", "Movement Delay").SetShared().SetValue(new Slider(70, 0, 250)))
+                    .ValueChanged += (sender, args) => SetDelay(args.GetNewValue<Slider>().Value, OrbwalkingDelay.Move);
+
+                delays.AddItem(new MenuItem("AttackDelay", "Attack Delay").SetShared().SetValue(new Slider(0, 0, 250)))
+                    .ValueChanged +=
+                    (sender, args) => SetDelay(args.GetNewValue<Slider>().Value, OrbwalkingDelay.Attack);
+
+                delays.AddItem(new MenuItem("FarmDelay", "Farm Delay").SetShared().SetValue(new Slider(0, 0, 200)));
+
+                _config.AddSubMenu(delays);
+
+                var delayMovement = new Menu("Movement Humanizer", "Movement");
+                delayMovement.AddItem(
+                    new MenuItem("MovementMinDelay", "Min. Multi % Delay").SetShared()
+                        .SetValue(new Slider(170, 100, 300))).ValueChanged +=
+                    (sender, args) => SetMinDelay(args.GetNewValue<Slider>().Value, OrbwalkingDelay.Move);
+                delayMovement.AddItem(
+                    new MenuItem("MovementMaxDelay", "Max. Multi % Delay").SetShared()
+                        .SetValue(new Slider(220, 100, 300))).ValueChanged +=
+                    (sender, args) => SetMaxDelay(args.GetNewValue<Slider>().Value, OrbwalkingDelay.Move);
+                delayMovement.AddItem(
+                    new MenuItem("MovementProbability", "Probability %").SetShared().SetValue(new Slider(30)))
+                    .ValueChanged +=
+                    (sender, args) => SetDelayProbability(args.GetNewValue<Slider>().Value, OrbwalkingDelay.Move);
+                delayMovement.AddItem(new MenuItem("MovementEnabled", "Enabled").SetShared().SetValue(false))
+                    .ValueChanged += (sender, args) => SetDelayRandomize(args.GetNewValue<bool>(), OrbwalkingDelay.Move);
+                _config.AddSubMenu(delayMovement);
+
+                var delayAttack = new Menu("Attacks Humanizer", "Attack");
+                delayAttack.AddItem(
+                    new MenuItem("AttackMinDelay", "Min. Multi % Delay").SetShared().SetValue(new Slider(170, 100, 300)))
+                    .ValueChanged +=
+                    (sender, args) => SetMinDelay(args.GetNewValue<Slider>().Value, OrbwalkingDelay.Attack);
+                delayAttack.AddItem(
+                    new MenuItem("AttackMaxDelay", "Max. Multi % Delay").SetShared().SetValue(new Slider(220, 100, 300)))
+                    .ValueChanged +=
+                    (sender, args) => SetMaxDelay(args.GetNewValue<Slider>().Value, OrbwalkingDelay.Attack);
+                delayAttack.AddItem(
+                    new MenuItem("AttackProbability", "Probability %").SetShared().SetValue(new Slider(30)))
+                    .ValueChanged +=
+                    (sender, args) => SetDelayProbability(args.GetNewValue<Slider>().Value, OrbwalkingDelay.Attack);
+                delayAttack.AddItem(new MenuItem("AttackEnabled", "Enabled").SetShared().SetValue(false)).ValueChanged
+                    += (sender, args) => SetDelayRandomize(args.GetNewValue<bool>(), OrbwalkingDelay.Attack);
+
+                _config.AddSubMenu(delayAttack);
+
+                var misc = new Menu("Misc", "Misc");
+                misc.AddItem(
+                    new MenuItem("HoldPosRadius", "Hold Position Radius").SetShared().SetValue(new Slider(50, 0, 250)));
+                misc.AddItem(new MenuItem("PriorizeFarm", "Priorize farm over harass").SetShared().SetValue(true));
+                misc.AddItem(new MenuItem("MissileCheck", "Missile Check").SetShared().SetValue(true));
+
+                _config.AddSubMenu(misc);
 
                 /*Load the menu*/
-                _config.AddItem(new MenuItem("Flee", "Flee").SetShared().SetValue(new KeyBind('G', KeyBindType.Press)));
-
-                _config.AddItem(
-                    new MenuItem("LastHit", "Last hit").SetShared().SetValue(new KeyBind('X', KeyBindType.Press)));
-
-                _config.AddItem(new MenuItem("Farm", "Mixed").SetShared().SetValue(new KeyBind('C', KeyBindType.Press)));
-
-                _config.AddItem(
-                    new MenuItem("LaneClear", "LaneClear").SetShared().SetValue(new KeyBind('V', KeyBindType.Press)));
 
                 _config.AddItem(
                     new MenuItem("Orbwalk", "Combo").SetShared().SetValue(new KeyBind(32, KeyBindType.Press)));
@@ -728,18 +709,30 @@ namespace SFXSivir.Wrappers
                 _config.AddItem(
                     new MenuItem("Orbwalk2", "Combo Alternate").SetShared().SetValue(new KeyBind(32, KeyBindType.Press)));
 
+                _config.AddItem(
+                    new MenuItem("Farm", "Harass").SetShared().SetValue(new KeyBind('C', KeyBindType.Press)));
+
+                _config.AddItem(
+                    new MenuItem("LaneClear", "Lane Clear").SetShared().SetValue(new KeyBind('V', KeyBindType.Press)));
+
+                _config.AddItem(
+                    new MenuItem("Last Hit", "Last Hit").SetShared().SetValue(new KeyBind('X', KeyBindType.Press)));
+
+                _config.AddItem(new MenuItem("Flee", "Flee").SetShared().SetValue(new KeyBind('Z', KeyBindType.Press)));
+
                 SetDelay(_config.Item("MovementDelay").GetValue<Slider>().Value, OrbwalkingDelay.Move);
                 SetMinDelay(_config.Item("MovementMinDelay").GetValue<Slider>().Value, OrbwalkingDelay.Move);
                 SetMaxDelay(_config.Item("MovementMaxDelay").GetValue<Slider>().Value, OrbwalkingDelay.Move);
-                SetDelayFrequency(_config.Item("MovementFrequency").GetValue<Slider>().Value, OrbwalkingDelay.Move);
-                SetDelayRandomize(_config.Item("MovementRandomize").GetValue<bool>(), OrbwalkingDelay.Move);
+                SetDelayProbability(_config.Item("MovementProbability").GetValue<Slider>().Value, OrbwalkingDelay.Move);
+                SetDelayRandomize(_config.Item("MovementEnabled").GetValue<bool>(), OrbwalkingDelay.Move);
 
                 SetDelay(_config.Item("AttackDelay").GetValue<Slider>().Value, OrbwalkingDelay.Attack);
                 SetMinDelay(_config.Item("AttackMinDelay").GetValue<Slider>().Value, OrbwalkingDelay.Attack);
                 SetMaxDelay(_config.Item("AttackMaxDelay").GetValue<Slider>().Value, OrbwalkingDelay.Attack);
-                SetDelayFrequency(_config.Item("AttackFrequency").GetValue<Slider>().Value, OrbwalkingDelay.Attack);
-                SetDelayRandomize(_config.Item("AttackRandomize").GetValue<bool>(), OrbwalkingDelay.Attack);
+                SetDelayProbability(_config.Item("AttackProbability").GetValue<Slider>().Value, OrbwalkingDelay.Attack);
+                SetDelayRandomize(_config.Item("AttackEnabled").GetValue<bool>(), OrbwalkingDelay.Attack);
 
+                CustomEvents.Game.OnGameLoad += GameOnOnGameLoad;
                 Game.OnUpdate += GameOnOnGameUpdate;
                 Drawing.OnDraw += DrawingOnOnDraw;
             }
@@ -784,7 +777,7 @@ namespace SFXSivir.Wrappers
                         return OrbwalkingMode.Mixed;
                     }
 
-                    if (_config.Item("LastHit").GetValue<KeyBind>().Active)
+                    if (_config.Item("Last Hit").GetValue<KeyBind>().Active)
                     {
                         return OrbwalkingMode.LastHit;
                     }
@@ -797,6 +790,29 @@ namespace SFXSivir.Wrappers
                     return OrbwalkingMode.None;
                 }
                 set { _mode = value; }
+            }
+
+            private void GameOnOnGameLoad(EventArgs args)
+            {
+                var clone = false;
+                foreach (var enemy in GameObjects.EnemyHeroes)
+                {
+                    if (_attackleObjectChamps.Any(v => v.Equals(enemy.ChampionName, StringComparison.OrdinalIgnoreCase)))
+                    {
+                        _attackableObjects.Add(
+                            enemy.ChampionName.ToLower(), _config.Item("Attack" + enemy.ChampionName).GetValue<bool>());
+                    }
+                    if (!clone &&
+                        _attackleCloneChamps.Any(v => v.Equals(enemy.ChampionName, StringComparison.OrdinalIgnoreCase)))
+                    {
+                        clone = true;
+                    }
+                }
+                if (clone)
+                {
+                    _attackableObjects.Add("clone", _config.Item("AttackClone").GetValue<bool>());
+                }
+                _attackableObjects.Add("ward", _config.Item("AttackWard").GetValue<bool>());
             }
 
             /// <summary>
@@ -871,13 +887,7 @@ namespace SFXSivir.Wrappers
                 var minions = new List<Obj_AI_Minion>();
                 if (ActiveMode != OrbwalkingMode.None && ActiveMode != OrbwalkingMode.Flee)
                 {
-                    minions = GetMinions(
-                        _config.Item("AttackWard").GetValue<bool>(), _config.Item("AttackZyra").GetValue<bool>(),
-                        _config.Item("AttackHeimer").GetValue<bool>(), _config.Item("AttackClone").GetValue<bool>(),
-                        _config.Item("AttackAnnie").GetValue<bool>(), _config.Item("AttackTeemo").GetValue<bool>(),
-                        _config.Item("AttackShaco").GetValue<bool>(), _config.Item("AttackGangplank").GetValue<bool>(),
-                        _config.Item("AttackYorick").GetValue<bool>(),
-                        _config.Item("AttackMordekaiser").GetValue<bool>());
+                    minions = GetMinions(ActiveMode == OrbwalkingMode.Combo);
                 }
 
                 /*Killable Minion*/
@@ -887,8 +897,8 @@ namespace SFXSivir.Wrappers
                     var minionList =
                         minions.OrderByDescending(minion => minion.CharData.BaseSkinName.Contains("Siege"))
                             .ThenBy(minion => minion.CharData.BaseSkinName.Contains("Super"))
-                            .ThenByDescending(minion => minion.MaxHealth)
-                            .ThenBy(minion => minion.Health);
+                            .ThenBy(minion => minion.Health)
+                            .ThenByDescending(minion => minion.MaxHealth);
 
                     foreach (var minion in minionList)
                     {
@@ -1014,18 +1024,39 @@ namespace SFXSivir.Wrappers
 
                 if (result == null && ActiveMode == OrbwalkingMode.Combo)
                 {
-                    if (
-                        !GameObjects.EnemyHeroes.Any(
-                            e => e.IsValidTarget() && e.Distance(Player) < GetRealAutoAttackRange(e) * 1.2f))
+                    if (!GameObjects.EnemyHeroes.Any(e => e.IsValidTarget(GetRealAutoAttackRange(e) * 1.2f)))
                     {
-                        return minions.FirstOrDefault(m => !MinionManager.IsMinion(m, true));
+                        return minions.FirstOrDefault();
                     }
                 }
 
                 return result;
             }
 
-            private List<Obj_AI_Minion> GetMinions(bool ward,
+            private void SetAttackableObject(string name, bool value)
+            {
+                if (_attackableObjects.ContainsKey(name.ToLower()))
+                {
+                    _attackableObjects[name.ToLower()] = value;
+                }
+            }
+
+            private bool IsAttackableObject(string name)
+            {
+                return _attackableObjects.ContainsKey(name.ToLower()) && _attackableObjects[name.ToLower()];
+            }
+
+            private List<Obj_AI_Minion> GetMinions(bool combo = false)
+            {
+                return GetMinions(
+                    !combo, IsAttackableObject("ward"), IsAttackableObject("zyra"), IsAttackableObject("heimerdinger"),
+                    IsAttackableObject("clone"), IsAttackableObject("annie"), IsAttackableObject("teemo"),
+                    IsAttackableObject("shaco"), IsAttackableObject("gangplank"), IsAttackableObject("yorick"),
+                    IsAttackableObject("mordekaiser"));
+            }
+
+            private List<Obj_AI_Minion> GetMinions(bool minion,
+                bool ward,
                 bool zyra,
                 bool heimer,
                 bool clone,
@@ -1041,19 +1072,30 @@ namespace SFXSivir.Wrappers
                 var clones = new List<Obj_AI_Minion>();
 
                 var units = ward ? GameObjects.EnemyMinions.Concat(GameObjects.EnemyWards) : GameObjects.EnemyMinions;
-                foreach (var minion in units.Where(u => u.IsValidTarget() && InAutoAttackRange(u)))
+                foreach (var unit in units.Where(u => u.IsValidTarget() && InAutoAttackRange(u)))
                 {
-                    var baseName = minion.CharData.BaseSkinName.ToLower();
-                    if (MinionManager.IsMinion(minion, ward)) //minions & wards
+                    var baseName = unit.CharData.BaseSkinName.ToLower();
+                    if (minion) //minions
                     {
-                        minions.Add(minion);
-                        continue;
+                        if (baseName.Contains("minion") || baseName.Contains("bilge") || baseName.Contains("bw_"))
+                        {
+                            minions.Add(unit);
+                            continue;
+                        }
+                    }
+                    if (ward) //wards
+                    {
+                        if (baseName.Contains("ward") || baseName.Contains("trinket"))
+                        {
+                            targets.Add(unit);
+                            continue;
+                        }
                     }
                     if (zyra) //zyra plant
                     {
                         if (baseName.Contains("zyra") && baseName.Contains("plant"))
                         {
-                            targets.Add(minion);
+                            targets.Add(unit);
                             continue;
                         }
                     }
@@ -1061,7 +1103,7 @@ namespace SFXSivir.Wrappers
                     {
                         if (baseName.Contains("heimert"))
                         {
-                            targets.Add(minion);
+                            targets.Add(unit);
                             continue;
                         }
                     }
@@ -1069,7 +1111,7 @@ namespace SFXSivir.Wrappers
                     {
                         if (baseName.Contains("annietibbers"))
                         {
-                            targets.Add(minion);
+                            targets.Add(unit);
                             continue;
                         }
                     }
@@ -1077,7 +1119,7 @@ namespace SFXSivir.Wrappers
                     {
                         if (baseName.Contains("teemomushroom"))
                         {
-                            targets.Add(minion);
+                            targets.Add(unit);
                             continue;
                         }
                     }
@@ -1085,7 +1127,7 @@ namespace SFXSivir.Wrappers
                     {
                         if (baseName.Contains("shacobox"))
                         {
-                            targets.Add(minion);
+                            targets.Add(unit);
                             continue;
                         }
                     }
@@ -1093,7 +1135,7 @@ namespace SFXSivir.Wrappers
                     {
                         if (baseName.Contains("gangplankbarrel"))
                         {
-                            targets.Add(minion);
+                            targets.Add(unit);
                             continue;
                         }
                     }
@@ -1101,7 +1143,7 @@ namespace SFXSivir.Wrappers
                     {
                         if (baseName.Contains("yorick") && baseName.Contains("ghoul"))
                         {
-                            targets.Add(minion);
+                            targets.Add(unit);
                             continue;
                         }
                     }
@@ -1110,7 +1152,7 @@ namespace SFXSivir.Wrappers
                         if (baseName.Contains("shaco") || baseName.Contains("leblanc") ||
                             baseName.Contains("monkeyking"))
                         {
-                            clones.Add(minion);
+                            clones.Add(unit);
                             continue;
                         }
                     }
@@ -1118,15 +1160,19 @@ namespace SFXSivir.Wrappers
                     {
                         if (GameObjects.AllyHeroes.Any(e => e.CharData.BaseSkinName.ToLower().Equals(baseName)))
                         {
-                            targets.Add(minion);
+                            targets.Add(unit);
                         }
                     }
                 }
-                return
-                    targets.Concat(minions)
-                        .Concat(GameObjects.Jungle.Where(u => u.IsValidTarget() && InAutoAttackRange(u)))
-                        .Concat(clones)
-                        .ToList();
+                var finalTargets = targets;
+                if (minion)
+                {
+                    finalTargets =
+                        finalTargets.Concat(minions)
+                            .Concat(GameObjects.Jungle.Where(u => u.IsValidTarget() && InAutoAttackRange(u)))
+                            .ToList();
+                }
+                return finalTargets.Concat(clones).ToList();
             }
 
             private void GameOnOnGameUpdate(EventArgs args)
@@ -1158,11 +1204,12 @@ namespace SFXSivir.Wrappers
 
             private void DrawingOnOnDraw(EventArgs args)
             {
+                var circleThickness = _config.Item("CircleThickness").GetValue<Slider>().Value;
                 if (_config.Item("AACircle").GetValue<Circle>().Active)
                 {
                     Render.Circle.DrawCircle(
                         Player.Position, GetRealAutoAttackRange(null) + 65,
-                        _config.Item("AACircle").GetValue<Circle>().Color);
+                        _config.Item("AACircle").GetValue<Circle>().Color, circleThickness);
                 }
 
                 if (_config.Item("AACircle2").GetValue<Circle>().Active)
@@ -1172,7 +1219,7 @@ namespace SFXSivir.Wrappers
                     {
                         Render.Circle.DrawCircle(
                             target.Position, GetRealAutoAttackRange(target) + 65,
-                            _config.Item("AACircle2").GetValue<Circle>().Color);
+                            _config.Item("AACircle2").GetValue<Circle>().Color, circleThickness);
                     }
                 }
 
@@ -1180,7 +1227,7 @@ namespace SFXSivir.Wrappers
                 {
                     Render.Circle.DrawCircle(
                         Player.Position, _config.Item("HoldPosRadius").GetValue<Slider>().Value,
-                        _config.Item("HoldZone").GetValue<Circle>().Color, 5, true);
+                        _config.Item("HoldZone").GetValue<Circle>().Color, circleThickness, true);
                 }
             }
         }
@@ -1191,7 +1238,7 @@ namespace SFXSivir.Wrappers
         public float Default { get; set; }
         public float MinDelay { get; set; }
         public float MaxDelay { get; set; }
-        public float Frequency { get; set; }
+        public float Probability { get; set; }
         public bool Randomize { get; set; }
         public float CurrentDelay { get; set; }
     }

@@ -28,6 +28,7 @@ using System.Linq;
 using LeagueSharp;
 using LeagueSharp.Common;
 using SFXViktor.Library.Logger;
+using SharpDX;
 
 #endregion
 
@@ -36,6 +37,8 @@ namespace SFXViktor.SFXTargetSelector
     internal class Humanizer
     {
         private static Menu _mainMenu;
+        private static float _lastRange;
+        private static float _lastRangeChange;
 
         internal static void AddToMenu(Menu mainMenu)
         {
@@ -43,12 +46,12 @@ namespace SFXViktor.SFXTargetSelector
             {
                 _mainMenu = mainMenu;
 
-                var humanizerMenu = _mainMenu.AddSubMenu(new Menu("Humanizer", _mainMenu.Name + ".humanizer"));
-                humanizerMenu.AddItem(
-                    new MenuItem(humanizerMenu.Name + ".fow", "FoW Delay").SetValue(new Slider(500, 0, 1500)));
-                humanizerMenu.AddItem(
-                    new MenuItem(humanizerMenu.Name + ".switch", "Switch Delay").SetValue(new Slider(500, 0, 1500)));
-                humanizerMenu.AddItem(new MenuItem(humanizerMenu.Name + ".enabled", "Enabled").SetValue(true));
+                _mainMenu.AddItem(
+                    new MenuItem(_mainMenu.Name + ".fow", "Target Acquire Delay").SetShared()
+                        .SetValue(new Slider(400, 0, 1500)));
+                _mainMenu.AddItem(
+                    new MenuItem(_mainMenu.Name + ".range", "Range Change Delay").SetShared()
+                        .SetValue(new Slider(400, 0, 1500)));
             }
             catch (Exception ex)
             {
@@ -56,33 +59,43 @@ namespace SFXViktor.SFXTargetSelector
             }
         }
 
-        public static IEnumerable<Targets.Item> FilterTargets(IEnumerable<Targets.Item> targets)
+        public static IEnumerable<Targets.Item> FilterTargets(IEnumerable<Targets.Item> targets,
+            Vector3 from,
+            float range)
         {
-            if (_mainMenu.Item(_mainMenu.Name + ".humanizer.enabled").GetValue<bool>())
+            var finalTargets = targets.ToList();
+            try
             {
-                var fowDelay = (float) _mainMenu.Item(_mainMenu.Name + ".humanizer.fow").GetValue<Slider>().Value;
+                var rangeDelay = _mainMenu.Item(_mainMenu.Name + ".range").GetValue<Slider>().Value;
+                var fowDelay = _mainMenu.Item(_mainMenu.Name + ".fow").GetValue<Slider>().Value;
+                if (rangeDelay > 0 && range > 0)
+                {
+                    if (_lastRange > 0 && Game.Time - _lastRangeChange <= rangeDelay / 1000f)
+                    {
+                        finalTargets =
+                            finalTargets.Where(
+                                t =>
+                                    t.Hero.Distance(
+                                        from.Equals(default(Vector3)) ? ObjectManager.Player.ServerPosition : from) <=
+                                    _lastRange).ToList();
+                    }
+                    else
+                    {
+                        _lastRange = range;
+                        _lastRangeChange = Game.Time;
+                    }
+                }
                 if (fowDelay > 0)
                 {
-                    fowDelay = fowDelay / 1000f;
-                }
-                var switchDelay = (float) _mainMenu.Item(_mainMenu.Name + ".humanizer.fow").GetValue<Slider>().Value;
-                if (switchDelay > 0)
-                {
-                    switchDelay = fowDelay / 1000f;
-                }
-                if (fowDelay > 0.0f || switchDelay > 0.0f)
-                {
-                    var lastTarget = Targets.Items.OrderByDescending(i => i.LastTargetSwitch).FirstOrDefault();
-                    return
-                        targets.Where(item => Game.Time - item.LastVisibleChange > fowDelay || fowDelay <= 0.0f)
-                            .Where(
-                                item =>
-                                    lastTarget == null || lastTarget.Hero.NetworkId.Equals(item.Hero.NetworkId) ||
-                                    (Selected.Target != null && Selected.Target.NetworkId.Equals(item.Hero.NetworkId)) ||
-                                    Game.Time - lastTarget.LastTargetSwitch > switchDelay || switchDelay <= 0.0f);
+                    finalTargets =
+                        finalTargets.Where(item => Game.Time - item.LastVisibleChange > fowDelay / 1000f).ToList();
                 }
             }
-            return targets;
+            catch (Exception ex)
+            {
+                Global.Logger.AddItem(new LogItem(ex));
+            }
+            return finalTargets;
         }
     }
 }

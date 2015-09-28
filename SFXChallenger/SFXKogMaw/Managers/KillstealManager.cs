@@ -26,9 +26,9 @@ using System;
 using System.Linq;
 using LeagueSharp;
 using LeagueSharp.Common;
+using SFXKogMaw.Helpers;
 using SFXKogMaw.Library;
 using SFXKogMaw.Library.Logger;
-using SFXKogMaw.Wrappers;
 
 #endregion
 
@@ -74,21 +74,23 @@ namespace SFXKogMaw.Managers
 
                 foreach (var enemy in
                     GameObjects.EnemyHeroes.Where(
-                        e => e.Distance(ObjectManager.Player) <= MaxRange && !Invulnerable.HasBuff(e)))
+                        e => e.Distance(ObjectManager.Player) <= MaxRange && !Invulnerable.Check(e)))
                 {
                     var itemDamage = items ? ItemManager.CalculateComboDamage(enemy) - 20 : 0;
                     var summonerDamage = summoners ? SummonerManager.CalculateComboDamage(enemy) - 10 : 0;
                     if (items && itemDamage > enemy.Health)
                     {
-                        ItemManager.UseComboItems(enemy);
+                        ItemManager.UseComboItems(enemy, true);
+                        return;
                     }
-                    else if (summoners && summonerDamage > (enemy.Health + enemy.HPRegenRate * 3))
+                    if (summoners && summonerDamage > (enemy.Health + enemy.HPRegenRate * 3))
                     {
                         SummonerManager.UseComboSummoners(enemy);
+                        return;
                     }
-                    else if (items && summoners && (summonerDamage + itemDamage) > (enemy.Health + enemy.HPRegenRate * 3))
+                    if (items && summoners && (summonerDamage + itemDamage) > (enemy.Health + enemy.HPRegenRate * 3))
                     {
-                        ItemManager.UseComboItems(enemy);
+                        ItemManager.UseComboItems(enemy, true);
                         SummonerManager.UseComboSummoners(enemy);
                     }
                 }

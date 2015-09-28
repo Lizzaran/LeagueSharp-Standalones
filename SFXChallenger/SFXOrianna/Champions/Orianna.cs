@@ -23,6 +23,7 @@
 #region
 
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 using LeagueSharp;
@@ -57,6 +58,7 @@ namespace SFXOrianna.Champions
         private MenuItem _ballPositionCircle;
         private MenuItem _ballPositionRadius;
         private MenuItem _ballPositionThickness;
+        private UltimateManager _ultimate;
 
         protected override ItemFlags ItemFlags
         {
@@ -70,7 +72,6 @@ namespace SFXOrianna.Champions
 
         protected override void OnLoad()
         {
-            Core.OnPostUpdate += OnCorePostUpdate;
             Interrupter2.OnInterruptableTarget += OnInterruptableTarget;
             InitiatorManager.OnAllyInitiator += OnAllyInitiator;
             Spellbook.OnCastSpell += OnSpellbookCastSpell;
@@ -78,26 +79,44 @@ namespace SFXOrianna.Champions
             AntiGapcloser.OnEnemyGapcloser += OnEnemyGapcloser;
             CustomEvents.Unit.OnDash += OnUnitDash;
             Drawing.OnDraw += OnDrawingDraw;
-        }
+            Obj_AI_Base.OnProcessSpellCast += OnObjAiBaseProcessSpellCast;
 
-        protected override void OnUnload()
-        {
-            Core.OnPostUpdate -= OnCorePostUpdate;
-            Interrupter2.OnInterruptableTarget -= OnInterruptableTarget;
-            InitiatorManager.OnAllyInitiator -= OnAllyInitiator;
-            Spellbook.OnCastSpell -= OnSpellbookCastSpell;
-            Ball.OnPositionChange -= OnBallPositionChange;
-            AntiGapcloser.OnEnemyGapcloser += OnEnemyGapcloser;
-            CustomEvents.Unit.OnDash -= OnUnitDash;
-            Drawing.OnDraw -= OnDrawingDraw;
+            _ultimate = new UltimateManager
+            {
+                Combo = true,
+                Assisted = true,
+                Auto = true,
+                Flash = true,
+                Required = true,
+                Gapcloser = false,
+                GapcloserDelay = false,
+                Interrupt = true,
+                InterruptDelay = false,
+                DamageCalculation =
+                    hero =>
+                        CalcComboDamage(
+                            hero, Menu.Item(Menu.Name + ".combo.q").GetValue<bool>() && Q.IsReady(),
+                            Menu.Item(Menu.Name + ".combo.w").GetValue<bool>() && W.IsReady(),
+                            Menu.Item(Menu.Name + ".combo.e").GetValue<bool>() && E.IsReady(), true)
+            };
         }
 
         protected override void AddToMenu()
         {
+            var ultimateMenu = _ultimate.AddToMenu(Menu);
+
+            ultimateMenu.AddItem(
+                new MenuItem(ultimateMenu.Name + ".width", "Width").SetValue(new Slider((int) R.Width, 250, 400)))
+                .ValueChanged += delegate(object sender, OnValueChangeEventArgs args)
+                {
+                    R.Width = args.GetNewValue<Slider>().Value;
+                    DrawingManager.Update("R Flash", args.GetNewValue<Slider>().Value + SummonerManager.Flash.Range);
+                };
+
             var comboMenu = Menu.AddSubMenu(new Menu("Combo", Menu.Name + ".combo"));
             HitchanceManager.AddToMenu(
                 comboMenu.AddSubMenu(new Menu("Hitchance", comboMenu.Name + ".hitchance")), "combo",
-                new Dictionary<string, HitChance> { { "Q", HitChance.High } });
+                new Dictionary<string, HitChance> { { "Q", HitChance.VeryHigh } });
             comboMenu.AddItem(new MenuItem(comboMenu.Name + ".q", "Use Q").SetValue(true));
             comboMenu.AddItem(new MenuItem(comboMenu.Name + ".w", "Use W").SetValue(true));
             comboMenu.AddItem(new MenuItem(comboMenu.Name + ".e", "Use E").SetValue(true));
@@ -107,46 +126,45 @@ namespace SFXOrianna.Champions
                 harassMenu.AddSubMenu(new Menu("Hitchance", harassMenu.Name + ".hitchance")), "harass",
                 new Dictionary<string, HitChance> { { "Q", HitChance.VeryHigh } });
             ManaManager.AddToMenu(harassMenu, "harass-q", ManaCheckType.Minimum, ManaValueType.Percent, "Q");
-            ManaManager.AddToMenu(harassMenu, "harass-w", ManaCheckType.Minimum, ManaValueType.Percent, "W");
+            ManaManager.AddToMenu(harassMenu, "harass-w", ManaCheckType.Minimum, ManaValueType.Percent, "W", 50);
             harassMenu.AddItem(new MenuItem(harassMenu.Name + ".q", "Use Q").SetValue(true));
             harassMenu.AddItem(new MenuItem(harassMenu.Name + ".w", "Use W").SetValue(true));
-            harassMenu.AddItem(new MenuItem(harassMenu.Name + ".e", "Use E").SetValue(true));
+            harassMenu.AddItem(new MenuItem(harassMenu.Name + ".e", "Use E").SetValue(false));
 
             var laneclearMenu = Menu.AddSubMenu(new Menu("Lane Clear", Menu.Name + ".lane-clear"));
-            ManaManager.AddToMenu(laneclearMenu, "lane-clear", ManaCheckType.Minimum, ManaValueType.Percent);
+            ManaManager.AddToMenu(laneclearMenu, "lane-clear", ManaCheckType.Minimum, ManaValueType.Percent, null, 25);
             laneclearMenu.AddItem(new MenuItem(laneclearMenu.Name + ".q", "Use Q").SetValue(true));
             laneclearMenu.AddItem(new MenuItem(laneclearMenu.Name + ".w", "Use W").SetValue(true));
-
-            var ultimateMenu = UltimateManager.AddToMenu(Menu, true, true, false, false, false, true, true, true, true);
-
-            ultimateMenu.AddItem(
-                new MenuItem(ultimateMenu.Name + ".width", "Width").SetValue(new Slider((int) R.Width, 250, 400)))
-                .ValueChanged += delegate(object sender, OnValueChangeEventArgs args)
-                {
-                    R.Width = args.GetNewValue<Slider>().Value;
-                    DrawingManager.Update(
-                        "R " + "Flash", args.GetNewValue<Slider>().Value + SummonerManager.Flash.Range);
-                };
 
             var fleeMenu = Menu.AddSubMenu(new Menu("Flee", Menu.Name + ".flee"));
             fleeMenu.AddItem(new MenuItem(fleeMenu.Name + ".w", "Use W").SetValue(true));
             fleeMenu.AddItem(new MenuItem(fleeMenu.Name + ".e", "Use E").SetValue(true));
 
             var initiatorMenu = Menu.AddSubMenu(new Menu("Initiator", Menu.Name + ".initiator"));
-            InitiatorManager.AddToMenu(
-                initiatorMenu.AddSubMenu(new Menu("Whitelist", initiatorMenu.Name + ".whitelist")), true, false);
+            var initiatorWhitelistMenu =
+                initiatorMenu.AddSubMenu(new Menu("Whitelist", initiatorMenu.Name + ".whitelist"));
+            initiatorWhitelistMenu.Color = HeroListManager.WhitelistColor;
+            InitiatorManager.AddToMenu(initiatorWhitelistMenu, true, false);
             initiatorMenu.AddItem(new MenuItem(initiatorMenu.Name + ".use-e", "Use E").SetValue(true));
 
-            var miscMenu = Menu.AddSubMenu(new Menu("Miscellaneous", Menu.Name + ".miscellaneous"));
-            HeroListManager.AddToMenu(
-                miscMenu.AddSubMenu(new Menu("Q " + "Gapcloser", miscMenu.Name + "q-gapcloser")), "q-gapcloser", false,
-                false, true, false);
-            ManaManager.AddToMenu(miscMenu, "e-self", ManaCheckType.Minimum, ManaValueType.Percent, "E " + "Self");
-            ManaManager.AddToMenu(miscMenu, "e-allies", ManaCheckType.Minimum, ManaValueType.Percent, "E " + "Allies");
-            miscMenu.AddItem(new MenuItem(miscMenu.Name + ".e-allies", "E " + "Allies").SetValue(true));
-            miscMenu.AddItem(new MenuItem(miscMenu.Name + ".block-r", "Block Missing" + " R").SetValue(true));
+            var shieldMenu = Menu.AddSubMenu(new Menu("Shield", Menu.Name + ".shield"));
+            ManaManager.AddToMenu(shieldMenu, "shield", ManaCheckType.Minimum, ManaValueType.Percent);
+            shieldMenu.AddItem(
+                new MenuItem(shieldMenu.Name + ".min-health", "Min. Health %").SetValue(new Slider(90, 1)));
+            shieldMenu.AddItem(
+                new MenuItem(shieldMenu.Name + ".min-damage", "Min. Damage % Incoming").SetValue(new Slider(10, 1)));
+            shieldMenu.AddItem(new MenuItem(shieldMenu.Name + ".enabled", "Enabled").SetValue(true));
 
-            DrawingManager.Add("R " + "Flash", R.Width + SummonerManager.Flash.Range);
+            var miscMenu = Menu.AddSubMenu(new Menu("Misc", Menu.Name + ".miscellaneous"));
+            HeroListManager.AddToMenu(
+                miscMenu.AddSubMenu(new Menu("Q Gapcloser", miscMenu.Name + "q-gapcloser")), "q-gapcloser", false, false,
+                true, false);
+            ManaManager.AddToMenu(miscMenu, "e-self", ManaCheckType.Minimum, ManaValueType.Percent, "E Self", 10);
+            ManaManager.AddToMenu(miscMenu, "e-allies", ManaCheckType.Minimum, ManaValueType.Percent, "E Allies", 20);
+            miscMenu.AddItem(new MenuItem(miscMenu.Name + ".e-allies", "E Allies").SetValue(true));
+            miscMenu.AddItem(new MenuItem(miscMenu.Name + ".block-r", "Block Missing R").SetValue(true));
+
+            DrawingManager.Add("R Flash", R.Width + SummonerManager.Flash.Range);
 
             IndicatorManager.AddToMenu(DrawingManager.Menu, true);
             IndicatorManager.Add(Q);
@@ -155,11 +173,75 @@ namespace SFXOrianna.Champions
             IndicatorManager.Add(R);
             IndicatorManager.Finale();
 
-            _ballPositionThickness = DrawingManager.Add("Ball Thickness", new Slider(5, 1, 10));
-            _ballPositionRadius = DrawingManager.Add("Ball Radius", new Slider(125, 0, 300));
-            _ballPositionCircle = DrawingManager.Add("Ball Position", new Circle(false, Color.OrangeRed));
+            _ballPositionThickness = DrawingManager.Add("Ball Thickness", new Slider(7, 1, 10));
+            _ballPositionRadius = DrawingManager.Add("Ball Radius", new Slider(95, 0, 300));
+            _ballPositionCircle = DrawingManager.Add("Ball Position", new Circle(false, Color.Yellow));
 
             R.Width = Menu.Item(ultimateMenu.Name + ".width").GetValue<Slider>().Value;
+        }
+
+        private void CastE(Obj_AI_Hero target)
+        {
+            if (target != null &&
+                (target.IsMe && ManaManager.Check("e-self") ||
+                 !target.IsMe && Menu.Item(Menu.Name + ".miscellaneous.e-allies").GetValue<bool>() &&
+                 ManaManager.Check("e-allies")))
+            {
+                E.CastOnUnit(target);
+            }
+        }
+
+        private void OnObjAiBaseProcessSpellCast(Obj_AI_Base sender, GameObjectProcessSpellCastEventArgs args)
+        {
+            try
+            {
+                if (!sender.IsEnemy || E.Level == 0 || !Menu.Item(Menu.Name + ".shield.enabled").GetValue<bool>())
+                {
+                    return;
+                }
+                var hero = sender as Obj_AI_Hero;
+                if (hero != null)
+                {
+                    if (args.Target != null && args.Target.NetworkId == Player.NetworkId && args.SData.IsAutoAttack())
+                    {
+                        IncomingDamage.Add(
+                            Player.ServerPosition.Distance(hero.ServerPosition) / args.SData.MissileSpeed + Game.Time,
+                            (float) hero.GetAutoAttackDamage(Player));
+                    }
+                    else
+                    {
+                        var slot = hero.GetSpellSlot(args.SData.Name);
+                        if (slot != SpellSlot.Unknown)
+                        {
+                            if (args.Target != null && args.Target.NetworkId == Player.NetworkId &&
+                                slot == hero.GetSpellSlot("SummonerDot"))
+                            {
+                                if (E.IsReady() && ManaManager.Check("shield"))
+                                {
+                                    E.CastOnUnit(Player);
+                                }
+                                IncomingDamage.Add(
+                                    Game.Time + 2,
+                                    (float) hero.GetSummonerSpellDamage(Player, Damage.SummonerSpell.Ignite));
+                            }
+                            else if ((slot == SpellSlot.Q || slot == SpellSlot.W || slot == SpellSlot.E ||
+                                      slot == SpellSlot.R) &&
+                                     ((args.Target != null && args.Target.NetworkId == Player.NetworkId)))
+                            {
+                                var time = args.SData.CastFrame / 30f +
+                                           Player.Distance(hero) / args.SData.MissileSpeed;
+                                IncomingDamage.Add(
+                                    Game.Time + (time > 2f ? (time < 5f ? time : 5f) : 2f),
+                                    (float) hero.GetSpellDamage(Player, slot));
+                            }
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Global.Logger.AddItem(new LogItem(ex));
+            }
         }
 
         private void OnDrawingDraw(EventArgs args)
@@ -172,7 +254,7 @@ namespace SFXOrianna.Champions
                     Render.Circle.DrawCircle(
                         (Ball.Hero != null ? Ball.Hero.Position : Ball.Position),
                         _ballPositionRadius.GetValue<Slider>().Value, circle.Color,
-                        _ballPositionThickness.GetValue<Slider>().Value);
+                        _ballPositionThickness.GetValue<Slider>().Value, true);
                 }
             }
             catch (Exception ex)
@@ -304,7 +386,7 @@ namespace SFXOrianna.Champions
             Q.SetSkillshot(0.15f, 110f, 1375f, false, SkillshotType.SkillshotCircle);
 
             W = new Spell(SpellSlot.W, float.MaxValue, DamageType.Magical);
-            W.SetSkillshot(0f, 220f, float.MaxValue, false, SkillshotType.SkillshotCircle);
+            W.SetSkillshot(0f, 230f, float.MaxValue, false, SkillshotType.SkillshotCircle);
 
             E = new Spell(SpellSlot.E, 1095f, DamageType.Magical);
             E.SetSkillshot(0.25f, 125f, 1700f, false, SkillshotType.SkillshotLine);
@@ -313,162 +395,134 @@ namespace SFXOrianna.Champions
             R.SetSkillshot(0.75f, 375f, float.MaxValue, false, SkillshotType.SkillshotCircle);
         }
 
-        private void OnCorePostUpdate(EventArgs args)
+        protected override void OnPreUpdate()
         {
-            try
+            if (Ball.IsMoving)
             {
-                Q.UpdateSourcePosition(Ball.Position, ObjectManager.Player.Position);
-                E.UpdateSourcePosition(Ball.Position, ObjectManager.Player.Position);
-
-                if (UltimateManager.Flash() && R.IsReady() && SummonerManager.Flash.IsReady())
+                return;
+            }
+            if (Menu.Item(Menu.Name + ".shield.enabled").GetValue<bool>() && E.IsReady() && ManaManager.Check("shield") &&
+                !Player.InFountain() && !Player.IsRecalling())
+            {
+                if (Player.HealthPercent <= Menu.Item(Menu.Name + ".shield.min-health").GetValue<Slider>().Value)
                 {
-                    if (Menu.Item(Menu.Name + ".ultimate.flash.move-cursor").GetValue<bool>())
+                    IncomingDamage.Clean();
+                    var totalDamage = IncomingDamage.TotalDamage * 1.1f;
+                    if (totalDamage >= Player.Health ||
+                        (totalDamage / Player.MaxHealth * 100) >=
+                        Menu.Item(Menu.Name + ".shield.min-damage").GetValue<Slider>().Value)
                     {
-                        Orbwalking.MoveTo(Game.CursorPos, Orbwalker.HoldAreaRadius);
+                        E.CastOnUnit(Player);
                     }
-                    if (Ball.Status != BallStatus.Me)
+                }
+            }
+        }
+
+        protected override void OnPostUpdate()
+        {
+            Q.UpdateSourcePosition(Ball.Position, ObjectManager.Player.Position);
+            E.UpdateSourcePosition(Ball.Position, ObjectManager.Player.Position);
+
+            if (_ultimate.IsActive(UltimateModeType.Flash) && R.IsReady() && SummonerManager.Flash.IsReady())
+            {
+                if (_ultimate.ShouldMove(UltimateModeType.Flash))
+                {
+                    Orbwalking.MoveTo(Game.CursorPos, Orbwalker.HoldAreaRadius);
+                }
+                if (Ball.Status != BallStatus.Me)
+                {
+                    if (E.IsReady())
                     {
-                        if (E.IsReady())
+                        E.CastOnUnit(Player);
+                    }
+                    return;
+                }
+                if (Ball.IsMoving)
+                {
+                    return;
+                }
+                var target = TargetSelector.GetTarget(
+                    (R.Width + SummonerManager.Flash.Range) * 1.5f, DamageType.Magical);
+                if (target != null && !target.IsDashing() &&
+                    (Prediction.GetPrediction(target, R.Delay + 0.3f).UnitPosition.Distance(Player.Position)) > R.Width)
+                {
+                    var flashPos = Player.Position.Extend(target.Position, SummonerManager.Flash.Range);
+                    var pred =
+                        Prediction.GetPrediction(
+                            new PredictionInput
+                            {
+                                Aoe = true,
+                                Collision = false,
+                                CollisionObjects = new[] { CollisionableObjects.YasuoWall },
+                                From = flashPos,
+                                RangeCheckFrom = flashPos,
+                                Delay = R.Delay,
+                                Range = R.Range,
+                                Speed = R.Speed,
+                                Radius = R.Width,
+                                Type = R.Type,
+                                Unit = target
+                            });
+                    if (pred.Hitchance >= HitChance.High)
+                    {
+                        R.UpdateSourcePosition(flashPos, flashPos);
+                        var hits = GameObjects.EnemyHeroes.Where(x => R.WillHit(x, pred.CastPosition)).ToList();
+                        if (_ultimate.Check(UltimateModeType.Flash, hits))
                         {
-                            E.CastOnUnit(Player);
+                            if (R.Cast(Ball.Position))
+                            {
+                                Utility.DelayAction.Add(300, () => SummonerManager.Flash.Cast(flashPos));
+                            }
                         }
-                        return;
-                    }
-                    if (Ball.IsMoving)
-                    {
-                        return;
-                    }
-                    var target = TargetSelector.GetTarget(
-                        (R.Width + SummonerManager.Flash.Range) * 1.2f, DamageType.Magical);
-                    if (target != null && !target.IsDashing() &&
-                        (Prediction.GetPrediction(target, R.Delay + 0.3f).UnitPosition.Distance(Player.Position)) >
-                        R.Width * 1.025f)
-                    {
-                        var min = Menu.Item(Menu.Name + ".ultimate.flash.min").GetValue<Slider>().Value;
-                        var flashPos = Player.Position.Extend(target.Position, SummonerManager.Flash.Range);
-                        var pred =
-                            Prediction.GetPrediction(
-                                new PredictionInput
-                                {
-                                    Aoe = true,
-                                    Collision = false,
-                                    CollisionObjects = new[] { CollisionableObjects.YasuoWall },
-                                    From = flashPos,
-                                    RangeCheckFrom = flashPos,
-                                    Delay = R.Delay + 0.3f,
-                                    Range = R.Range,
-                                    Speed = R.Speed,
-                                    Radius = R.Width,
-                                    Type = R.Type,
-                                    Unit = target
-                                });
-                        if (pred.Hitchance >= HitChance.High)
+                        else if (_ultimate.ShouldSingle(UltimateModeType.Flash))
                         {
-                            R.UpdateSourcePosition(flashPos, flashPos);
-                            var hits = GameObjects.EnemyHeroes.Where(x => R.WillHit(x, pred.CastPosition)).ToList();
-                            if (UltimateManager.Check(
-                                "combo", min, hits,
-                                hero =>
-                                    CalcComboDamage(
-                                        hero, Menu.Item(Menu.Name + ".combo.q").GetValue<bool>() && Q.IsReady(),
-                                        Menu.Item(Menu.Name + ".combo.w").GetValue<bool>() && W.IsReady(),
-                                        Menu.Item(Menu.Name + ".combo.e").GetValue<bool>() && E.IsReady(), true)))
+                            if (hits.Any(hit => _ultimate.CheckSingle(UltimateModeType.Flash, hit)))
                             {
                                 if (R.Cast(Ball.Position))
                                 {
                                     Utility.DelayAction.Add(300, () => SummonerManager.Flash.Cast(flashPos));
                                 }
                             }
-                            else if (Menu.Item(Menu.Name + ".ultimate.flash.duel").GetValue<bool>())
-                            {
-                                if (UltimateManager.Check(
-                                    "combo", 1, hits,
-                                    hero =>
-                                        CalcComboDamage(
-                                            hero, Menu.Item(Menu.Name + ".combo.q").GetValue<bool>() && Q.IsReady(),
-                                            Menu.Item(Menu.Name + ".combo.w").GetValue<bool>() && W.IsReady(),
-                                            Menu.Item(Menu.Name + ".combo.e").GetValue<bool>() && E.IsReady(), true)))
-                                {
-                                    var cDmg = CalcComboDamage(
-                                        target, Menu.Item(Menu.Name + ".combo.q").GetValue<bool>() && Q.IsReady(),
-                                        Menu.Item(Menu.Name + ".combo.w").GetValue<bool>() && W.IsReady(),
-                                        Menu.Item(Menu.Name + ".combo.e").GetValue<bool>() && E.IsReady(), true);
-                                    if (cDmg - 20 >= target.Health)
-                                    {
-                                        if (R.Cast(Ball.Position))
-                                        {
-                                            Utility.DelayAction.Add(300, () => SummonerManager.Flash.Cast(flashPos));
-                                        }
-                                    }
-                                }
-                            }
-                            R.UpdateSourcePosition(Ball.Position, Ball.Position);
                         }
+                        R.UpdateSourcePosition(Ball.Position, Ball.Position);
                     }
                 }
+            }
 
-                if (UltimateManager.Assisted() && R.IsReady() && !Ball.IsMoving)
+            if (_ultimate.IsActive(UltimateModeType.Assisted) && R.IsReady() && !Ball.IsMoving)
+            {
+                if (_ultimate.ShouldMove(UltimateModeType.Assisted))
                 {
-                    if (Menu.Item(Menu.Name + ".ultimate.assisted.move-cursor").GetValue<bool>())
-                    {
-                        Orbwalking.MoveTo(Game.CursorPos, Orbwalker.HoldAreaRadius);
-                    }
-                    if (
-                        !RLogic(
-                            Menu.Item(Menu.Name + ".ultimate.assisted.min").GetValue<Slider>().Value,
-                            Menu.Item(Menu.Name + ".combo.q").GetValue<bool>() && Q.IsReady(),
-                            Menu.Item(Menu.Name + ".combo.w").GetValue<bool>() && W.IsReady(),
-                            Menu.Item(Menu.Name + ".combo.e").GetValue<bool>() && E.IsReady()))
-                    {
-                        var casted = false;
-                        if (Menu.Item(Menu.Name + ".ultimate.assisted.duel").GetValue<bool>())
-                        {
-                            casted = RLogicDuel(
-                                Menu.Item(Menu.Name + ".combo.q").GetValue<bool>() && Q.IsReady(),
-                                Menu.Item(Menu.Name + ".combo.w").GetValue<bool>() && W.IsReady(),
-                                Menu.Item(Menu.Name + ".combo.e").GetValue<bool>() && E.IsReady());
-                        }
-                        if (!casted)
-                        {
-                            if (E.IsReady())
-                            {
-                                EComboLogic(R);
-                            }
-                            if (Q.IsReady())
-                            {
-                                int hits;
-                                var pos = AssistedQLogic(out hits);
-                                if (!pos.Equals(Vector3.Zero) && hits >= 1)
-                                {
-                                    Q.Cast(pos);
-                                }
-                            }
-                        }
-                    }
+                    Orbwalking.MoveTo(Game.CursorPos, Orbwalker.HoldAreaRadius);
                 }
-
-                if (UltimateManager.Auto() && R.IsReady() && !Ball.IsMoving)
+                if (!RLogic(UltimateModeType.Assisted))
                 {
-                    if (
-                        !RLogic(
-                            Menu.Item(Menu.Name + ".ultimate.auto.min").GetValue<Slider>().Value,
-                            Menu.Item(Menu.Name + ".combo.q").GetValue<bool>() && Q.IsReady(),
-                            Menu.Item(Menu.Name + ".combo.w").GetValue<bool>() && W.IsReady(),
-                            Menu.Item(Menu.Name + ".combo.e").GetValue<bool>() && E.IsReady(), "auto"))
+                    var casted = RLogicSingle(UltimateModeType.Assisted);
+                    if (!casted)
                     {
-                        if (Menu.Item(Menu.Name + ".ultimate.auto.duel").GetValue<bool>())
+                        if (E.IsReady())
                         {
-                            RLogicDuel(
-                                Menu.Item(Menu.Name + ".combo.q").GetValue<bool>() && Q.IsReady(),
-                                Menu.Item(Menu.Name + ".combo.w").GetValue<bool>() && W.IsReady(),
-                                Menu.Item(Menu.Name + ".combo.e").GetValue<bool>() && E.IsReady());
+                            EComboLogic(R);
+                        }
+                        if (Q.IsReady())
+                        {
+                            int hits;
+                            var pos = AssistedQLogic(out hits);
+                            if (!pos.Equals(Vector3.Zero) && hits >= 1)
+                            {
+                                Q.Cast(pos);
+                            }
                         }
                     }
                 }
             }
-            catch (Exception ex)
+
+            if (_ultimate.IsActive(UltimateModeType.Auto) && R.IsReady() && !Ball.IsMoving)
             {
-                Global.Logger.AddItem(new LogItem(ex));
+                if (!RLogic(UltimateModeType.Auto))
+                {
+                    RLogicSingle(UltimateModeType.Auto);
+                }
             }
         }
 
@@ -477,7 +531,7 @@ namespace SFXOrianna.Champions
             try
             {
                 if (sender.IsEnemy && args.DangerLevel == Interrupter2.DangerLevel.High &&
-                    UltimateManager.Interrupt(sender) && R.IsReady())
+                    _ultimate.IsActive(UltimateModeType.Interrupt, sender) && R.IsReady())
                 {
                     var hits = GetHits(R);
                     if (hits.Item2.Any(i => i.NetworkId.Equals(sender.NetworkId)))
@@ -501,7 +555,7 @@ namespace SFXOrianna.Champions
             var q = Menu.Item(Menu.Name + ".combo.q").GetValue<bool>();
             var w = Menu.Item(Menu.Name + ".combo.w").GetValue<bool>();
             var e = Menu.Item(Menu.Name + ".combo.e").GetValue<bool>();
-            var r = UltimateManager.Combo();
+            var r = _ultimate.IsActive(UltimateModeType.Combo);
             var target = TargetSelector.GetTarget(Q);
             if (w && W.IsReady())
             {
@@ -509,15 +563,9 @@ namespace SFXOrianna.Champions
             }
             if (r && R.IsReady())
             {
-                if (
-                    !RLogic(
-                        Menu.Item(Menu.Name + ".ultimate.combo.min").GetValue<Slider>().Value, q && Q.IsReady(),
-                        w && W.IsReady(), e && E.IsReady()))
+                if (!RLogic(UltimateModeType.Combo))
                 {
-                    if (Menu.Item(Menu.Name + ".ultimate.combo.duel").GetValue<bool>())
-                    {
-                        RLogicDuel(q, w, e);
-                    }
+                    RLogicSingle(UltimateModeType.Combo);
                 }
             }
             if (q && Q.IsReady())
@@ -528,7 +576,7 @@ namespace SFXOrianna.Champions
             {
                 ELogic();
             }
-            if (target != null && CalcComboDamage(target, q, w, e, r) > target.Health)
+            if (target != null && _ultimate.GetDamage(target) > target.Health)
             {
                 ItemManager.UseComboItems(target);
                 SummonerManager.UseComboSummoners(target);
@@ -632,13 +680,10 @@ namespace SFXOrianna.Champions
                             bestEqTravelTime = t;
                         }
                     }
-                    if (eqTarget != null &&
-                        (eqTarget.IsMe || Menu.Item(Menu.Name + ".miscellaneous.e-allies").GetValue<bool>()) &&
-                        (eqTarget.IsMe && ManaManager.Check("e-self") || !eqTarget.IsMe && ManaManager.Check("e-allies")) &&
-                        bestEqTravelTime < directTravelTime * 1.3f &&
+                    if (eqTarget != null && bestEqTravelTime < directTravelTime * 1.3f &&
                         (Ball.Position.Distance(eqTarget.ServerPosition, true) > 10000))
                     {
-                        E.CastOnUnit(eqTarget);
+                        CastE(eqTarget);
                         return;
                     }
                 }
@@ -697,7 +742,7 @@ namespace SFXOrianna.Champions
                     {
                         if (ally.Position.CountEnemiesInRange(300) >= 1)
                         {
-                            E.CastOnUnit(ally);
+                            CastE(ally);
                             return;
                         }
                         target = ally;
@@ -706,30 +751,24 @@ namespace SFXOrianna.Champions
                     {
                         target = Player;
                     }
-                    if ((target.IsMe || Menu.Item(Menu.Name + ".miscellaneous.e-allies").GetValue<bool>()) &&
-                        (target.IsMe && ManaManager.Check("e-self") || !target.IsMe && ManaManager.Check("e-allies")) &&
-                        GetEHits(target.ServerPosition).Item1 >= minHits)
+                    if (GetEHits(target.ServerPosition).Item1 >= minHits)
                     {
-                        E.CastOnUnit(target);
+                        CastE(target);
                     }
                 }
                 else
                 {
                     if (GetEHits(Player.ServerPosition).Item1 >= (Ball.Position.CountEnemiesInRange(800) <= 2 ? 1 : 2))
                     {
-                        E.CastOnUnit(Player);
+                        CastE(Player);
                         return;
                     }
                     foreach (var ally in
                         GameObjects.AllyHeroes.Where(h => h.IsValidTarget(E.Range, false))
                             .Where(ally => ally.Position.CountEnemiesInRange(300) >= 2))
                     {
-                        if ((ally.IsMe || Menu.Item(Menu.Name + ".miscellaneous.e-allies").GetValue<bool>()) &&
-                            (ally.IsMe && ManaManager.Check("e-self") || !ally.IsMe && ManaManager.Check("e-allies")))
-                        {
-                            E.CastOnUnit(ally);
-                            return;
-                        }
+                        CastE(ally);
+                        return;
                     }
                 }
             }
@@ -739,17 +778,19 @@ namespace SFXOrianna.Champions
             }
         }
 
-        private bool RLogic(int min, bool q, bool w, bool e, string mode = "combo")
+        private bool RLogic(UltimateModeType mode)
         {
             try
             {
-                var hits = GetHits(R);
-                if (UltimateManager.Check(mode, min, hits.Item2, hero => CalcComboDamage(hero, q, w, e, true)))
+                if (_ultimate.IsActive(mode))
                 {
-                    R.Cast(Player.Position);
-                    return true;
+                    var hits = GetHits(R);
+                    if (hits.Item1 > 0 && _ultimate.Check(mode, hits.Item2))
+                    {
+                        R.Cast(Player.Position);
+                        return true;
+                    }
                 }
-                return false;
             }
             catch (Exception ex)
             {
@@ -758,15 +799,20 @@ namespace SFXOrianna.Champions
             return false;
         }
 
-        private bool RLogicDuel(bool q, bool w, bool e)
+        private bool RLogicSingle(UltimateModeType mode)
         {
             try
             {
-                if (
-                    GameObjects.EnemyHeroes.Where(t => UltimateManager.CheckDuel(t, CalcComboDamage(t, q, w, e, true)))
-                        .Any(t => RLogic(1, q, w, e)))
+                if (_ultimate.ShouldSingle(mode))
                 {
-                    return true;
+                    if (
+                        GameObjects.EnemyHeroes.Where(t => _ultimate.CheckSingle(mode, t))
+                            .Select(target => GetHits(R))
+                            .Any(hits => hits.Item1 > 0))
+                    {
+                        R.Cast(Player.Position);
+                        return true;
+                    }
                 }
             }
             catch (Exception ex)
@@ -932,7 +978,7 @@ namespace SFXOrianna.Champions
                 }
                 if (totalHits > 0)
                 {
-                    E.CastOnUnit(hero);
+                    CastE(hero);
                 }
             }
             catch (Exception ex)
@@ -1059,8 +1105,7 @@ namespace SFXOrianna.Champions
                     var q2Location = Q.GetCircularFarmLocation(rangedMinions, W.Width);
                     var bestLocation = (qLocation.MinionsHit > q2Location.MinionsHit + 1) ? qLocation : q2Location;
 
-                    if (bestLocation.MinionsHit > 0 && Ball.Status != BallStatus.Fixed ||
-                        bestLocation.Position.Distance(Ball.Position) > 30)
+                    if (bestLocation.MinionsHit > 0 && bestLocation.Position.Distance(Ball.Position) > 25)
                     {
                         Q.Cast(bestLocation.Position);
                         return;
@@ -1103,7 +1148,7 @@ namespace SFXOrianna.Champions
             if (Menu.Item(Menu.Name + ".flee.e").GetValue<bool>() && E.IsReady() &&
                 (Ball.Status != BallStatus.Me || Player.CountEnemiesInRange(500) > 0))
             {
-                E.CastOnUnit(Player);
+                CastE(Player);
             }
         }
 
@@ -1123,6 +1168,7 @@ namespace SFXOrianna.Champions
 
             static Ball()
             {
+                Status = BallStatus.Fixed;
                 Pos = ObjectManager.Player.Position;
                 GameObject.OnCreate += OnGameObjectCreate;
                 Obj_AI_Base.OnProcessSpellCast += OnObjAiBaseProcessSpellCast;
@@ -1237,6 +1283,65 @@ namespace SFXOrianna.Champions
                         Pos = sender.Position;
                         Status = BallStatus.Fixed;
                         IsMoving = false;
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Global.Logger.AddItem(new LogItem(ex));
+                }
+            }
+        }
+
+        internal class IncomingDamage
+        {
+            private static readonly ConcurrentDictionary<float, float> Damages =
+                new ConcurrentDictionary<float, float>();
+
+            public static float TotalDamage
+            {
+                get
+                {
+                    try
+                    {
+                        return Damages.Where(e => e.Key >= Game.Time).Select(e => e.Value).DefaultIfEmpty(0).Sum();
+                    }
+                    catch (Exception ex)
+                    {
+                        Global.Logger.AddItem(new LogItem(ex));
+                    }
+                    return 0;
+                }
+            }
+
+            public static void Clean()
+            {
+                try
+                {
+                    var damages = Damages.Where(entry => entry.Key < Game.Time).ToArray();
+                    foreach (var entry in damages)
+                    {
+                        float old;
+                        Damages.TryRemove(entry.Key, out old);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Global.Logger.AddItem(new LogItem(ex));
+                }
+            }
+
+            public static void Add(float time, float damage)
+            {
+                try
+                {
+                    float value;
+                    if (Damages.TryGetValue(time, out value))
+                    {
+                        Damages[time] = value + damage;
+                    }
+                    else
+                    {
+                        Damages[time] = damage;
                     }
                 }
                 catch (Exception ex)

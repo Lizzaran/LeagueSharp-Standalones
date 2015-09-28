@@ -28,11 +28,10 @@ using System.Linq;
 using LeagueSharp;
 using LeagueSharp.Common;
 using SFXVladimir.Enumerations;
+using SFXVladimir.Helpers;
 using SFXVladimir.Library.Logger;
-using SFXVladimir.Wrappers;
 using SharpDX;
 using DamageType = SFXVladimir.Enumerations.DamageType;
-using Orbwalking = LeagueSharp.Common.Orbwalking;
 using Spell = SFXVladimir.Wrappers.Spell;
 
 #endregion
@@ -46,7 +45,6 @@ namespace SFXVladimir.SFXTargetSelector
     public static class TargetSelector
     {
         private static Menu _menu;
-        private static Targets.Item _lastTarget;
 
         static TargetSelector()
         {
@@ -55,9 +53,14 @@ namespace SFXVladimir.SFXTargetSelector
 
         public static TargetSelectorModeType Mode { get; set; }
 
-        public static Obj_AI_Hero LastTarget
+        public static bool ForceFocus
         {
-            get { return _lastTarget != null ? _lastTarget.Hero : null; }
+            get { return _menu != null && _menu.Item(_menu.Name + ".force-focus").GetValue<bool>(); }
+        }
+
+        public static bool Focus
+        {
+            get { return _menu != null && _menu.Item(_menu.Name + ".focus").GetValue<bool>(); }
         }
 
         internal static bool IsValidTarget(Obj_AI_Hero target,
@@ -72,7 +75,7 @@ namespace SFXVladimir.SFXTargetSelector
                        target.Distance(
                            (from.Equals(default(Vector3)) ? ObjectManager.Player.ServerPosition : from), true) <
                        Math.Pow((range <= 0 ? Orbwalking.GetRealAutoAttackRange(target) : range), 2) &&
-                       !Invulnerable.HasBuff(target, damageType, ignoreShields);
+                       !Invulnerable.Check(target, damageType, ignoreShields);
             }
             catch (Exception ex)
             {
@@ -122,53 +125,39 @@ namespace SFXVladimir.SFXTargetSelector
             return new List<Targets.Item>();
         }
 
-        private static TargetSelectorModeType GetModeByMenuValue(string value)
+        private static TargetSelectorModeType GetModeBySelectedIndex(int index)
         {
-            var mode = TargetSelectorModeType.Weights;
             try
             {
-                if (value.Equals("Weigths"))
+                switch (index)
                 {
-                    mode = TargetSelectorModeType.Weights;
-                }
-                else if (value.Equals("Priorities"))
-                {
-                    mode = TargetSelectorModeType.Priorities;
-                }
-                else if (value.Equals("Less Attacks To Kill"))
-                {
-                    mode = TargetSelectorModeType.LessAttacksToKill;
-                }
-                else if (value.Equals("Most Ability Power"))
-                {
-                    mode = TargetSelectorModeType.MostAbilityPower;
-                }
-                else if (value.Equals("Most Attack Damage"))
-                {
-                    mode = TargetSelectorModeType.MostAttackDamage;
-                }
-                else if (value.Equals("Closest"))
-                {
-                    mode = TargetSelectorModeType.Closest;
-                }
-                else if (value.Equals("Near Mouse"))
-                {
-                    mode = TargetSelectorModeType.NearMouse;
-                }
-                else if (value.Equals("Less Cast Priority"))
-                {
-                    mode = TargetSelectorModeType.LessCastPriority;
-                }
-                else if (value.Equals("Least Health"))
-                {
-                    mode = TargetSelectorModeType.LeastHealth;
+                    case 0:
+                        return TargetSelectorModeType.Weights;
+                    case 1:
+                        return TargetSelectorModeType.Priorities;
+                    case 2:
+                        return TargetSelectorModeType.LessAttacksToKill;
+                    case 3:
+                        return TargetSelectorModeType.MostAbilityPower;
+                    case 4:
+                        return TargetSelectorModeType.MostAttackDamage;
+                    case 5:
+                        return TargetSelectorModeType.Closest;
+                    case 6:
+                        return TargetSelectorModeType.NearMouse;
+                    case 7:
+                        return TargetSelectorModeType.LessCastPriority;
+                    case 8:
+                        return TargetSelectorModeType.LeastHealth;
+                    default:
+                        return TargetSelectorModeType.Weights;
                 }
             }
             catch (Exception ex)
             {
                 Global.Logger.AddItem(new LogItem(ex));
             }
-            return mode;
+            return TargetSelectorModeType.Weights;
         }
 
         public static Obj_AI_Hero GetTarget(this Spell spell,
@@ -176,11 +165,19 @@ namespace SFXVladimir.SFXTargetSelector
             Vector3 from = new Vector3(),
             IEnumerable<Obj_AI_Hero> ignoredChampions = null)
         {
-            return
-                GetTarget(
-                    (spell.Range + spell.Width +
-                     Targets.Items.Select(e => e.Hero.BoundingRadius).DefaultIfEmpty(50).Max()) * 1.1f, spell.DamageType,
-                    ignoreShields, from, ignoredChampions);
+            try
+            {
+                return
+                    GetTarget(
+                        (spell.Range + spell.Width +
+                         Targets.Items.Select(e => e.Hero.BoundingRadius).DefaultIfEmpty(50).Max()) * 1.1f,
+                        spell.DamageType, ignoreShields, from, ignoredChampions);
+            }
+            catch (Exception ex)
+            {
+                Global.Logger.AddItem(new LogItem(ex));
+            }
+            return null;
         }
 
         public static Obj_AI_Hero GetTarget(float range,
@@ -217,8 +214,10 @@ namespace SFXVladimir.SFXTargetSelector
                     return new List<Obj_AI_Hero> { selectedTarget };
                 }
 
+                range = Mode == TargetSelectorModeType.Weights && ForceFocus ? Weights.Range : range;
+
                 var targets =
-                    Humanizer.FilterTargets(Targets.Items)
+                    Humanizer.FilterTargets(Targets.Items, from, range)
                         .Where(
                             h => ignoredChampions == null || ignoredChampions.All(i => i.NetworkId != h.Hero.NetworkId))
                         .Where(h => IsValidTarget(h.Hero, range, damageType, ignoreShields, from))
@@ -227,18 +226,12 @@ namespace SFXVladimir.SFXTargetSelector
                 if (targets.Count > 0)
                 {
                     var t = GetOrderedChampions(targets).ToList();
-                    if (Mode == TargetSelectorModeType.Weights && Weights.ForceFocus)
-                    {
-                        t = Weights.FilterTargets(t, range, damageType, ignoreShields, from).ToList();
-                    }
                     if (t.Count > 0)
                     {
-                        if (Selected.Target != null && Selected.Focus && t.Count > 1)
+                        if (Selected.Target != null && Focus && t.Count > 1)
                         {
                             t = t.OrderByDescending(x => x.Hero.NetworkId.Equals(Selected.Target.NetworkId)).ToList();
                         }
-                        _lastTarget = t.First();
-                        _lastTarget.LastTargetSwitch = Game.Time;
                         return t.Select(h => h.Hero).ToList();
                     }
                 }
@@ -256,32 +249,37 @@ namespace SFXVladimir.SFXTargetSelector
             {
                 _menu = menu;
 
-                var drawingMenu = _menu.AddSubMenu(new Menu("Drawing", menu.Name + ".drawing"));
+                var drawingMenu = _menu.AddSubMenu(new Menu("Drawings", menu.Name + ".drawing"));
 
                 drawingMenu.AddItem(
-                    new MenuItem(drawingMenu.Name + ".circle-thickness", "Circle Thickness").SetValue(
-                        new Slider(2, 1, 10)));
+                    new MenuItem(drawingMenu.Name + ".circle-thickness", "Circle Thickness").SetShared()
+                        .SetValue(new Slider(5, 1, 10)));
 
                 Selected.AddToMenu(_menu, drawingMenu);
                 Weights.AddToMenu(_menu, drawingMenu);
                 Priorities.AddToMenu(_menu);
+
+                _menu.AddItem(new MenuItem(_menu.Name + ".focus", "Focus Selected Target").SetShared().SetValue(true));
+                _menu.AddItem(
+                    new MenuItem(_menu.Name + ".force-focus", "Only Attack Selected Target").SetShared().SetValue(false));
+
                 Humanizer.AddToMenu(_menu);
 
                 _menu.AddItem(
-                    new MenuItem(menu.Name + ".mode", "Mode").SetValue(
-                        new StringList(
-                            new[]
-                            {
-                                "Weigths", "Priorities", "Less Attacks To Kill", "Most Ability Power",
-                                "Most Attack Damage", "Closest", "Near Mouse", "Less Cast Priority", "Least Health"
-                            })))
-                    .ValueChanged +=
+                    new MenuItem(menu.Name + ".mode", "Mode").SetShared()
+                        .SetValue(
+                            new StringList(
+                                new[]
+                                {
+                                    "Weigths", "Priorities", "Less Attacks To Kill", "Most Ability Power",
+                                    "Most Attack Damage", "Closest", "Near Mouse", "Less Cast Priority", "Least Health"
+                                }))).ValueChanged +=
                     delegate(object sender, OnValueChangeEventArgs args)
                     {
-                        Mode = GetModeByMenuValue(args.GetNewValue<StringList>().SelectedValue);
+                        Mode = GetModeBySelectedIndex(args.GetNewValue<StringList>().SelectedIndex);
                     };
 
-                Mode = GetModeByMenuValue(_menu.Item(menu.Name + ".mode").GetValue<StringList>().SelectedValue);
+                Mode = GetModeBySelectedIndex(_menu.Item(menu.Name + ".mode").GetValue<StringList>().SelectedIndex);
             }
             catch (Exception ex)
             {

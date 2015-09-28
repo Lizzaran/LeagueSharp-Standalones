@@ -29,6 +29,7 @@ using LeagueSharp;
 using LeagueSharp.Common;
 using SFXTwistedFate.Library;
 using SFXTwistedFate.Library.Logger;
+using SharpDX;
 
 #endregion
 
@@ -39,13 +40,25 @@ namespace SFXTwistedFate.Managers
         private static readonly Dictionary<string, Tuple<Menu, bool, bool, bool>> Menues =
             new Dictionary<string, Tuple<Menu, bool, bool, bool>>();
 
+        public static Color WhitelistColor
+        {
+            get { return Color.SpringGreen; }
+        }
+
+        public static Color BlacklistColor
+        {
+            get { return new Color(255, 60, 60); }
+        }
+
         public static void AddToMenu(Menu menu,
             string uniqueId,
             bool whitelist,
             bool ally,
             bool enemy,
             bool defaultValue,
-            bool dontSave = false)
+            bool dontSave = false,
+            bool enabled = true,
+            int tag = 0)
         {
             try
             {
@@ -55,25 +68,27 @@ namespace SFXTwistedFate.Managers
                         string.Format("HeroListManager: UniqueID \"{0}\" already exist.", uniqueId));
                 }
 
-                menu.AddItem(
-                    new MenuItem(
-                        menu.Name + ".hero-list-" + uniqueId + ".header", (whitelist ? "Whitelist" : "Blacklist")));
+                menu.Color = (whitelist ? WhitelistColor : BlacklistColor);
 
                 foreach (var hero in GameObjects.Heroes.Where(h => ally && h.IsAlly || enemy && h.IsEnemy))
                 {
                     var item =
                         new MenuItem(
                             menu.Name + ".hero-list-" + uniqueId + hero.ChampionName.ToLower(), hero.ChampionName)
-                            .SetValue(defaultValue);
-                    menu.AddItem(item);
+                            .SetTag(tag);
                     if (dontSave)
                     {
                         item.DontSave();
                     }
+                    menu.AddItem(item.SetValue(defaultValue));
                 }
 
-                menu.AddItem(new MenuItem(menu.Name + ".hero-list-" + uniqueId + ".enabled", "Enabled").SetValue(true));
-
+                var eItem = new MenuItem(menu.Name + ".hero-list-" + uniqueId + ".enabled", "Enabled").SetTag(tag);
+                if (dontSave)
+                {
+                    eItem.DontSave();
+                }
+                menu.AddItem(eItem.SetValue(enabled));
                 Menues[uniqueId] = new Tuple<Menu, bool, bool, bool>(menu, whitelist, ally, enemy);
             }
             catch (Exception ex)

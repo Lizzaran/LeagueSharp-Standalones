@@ -46,7 +46,7 @@ namespace SFXOrianna.Abstracts
             Core.OnShutdown += OnCoreShutdown;
         }
 
-        private void OnCorePreUpdate(EventArgs args)
+        protected override void OnPreUpdate()
         {
             try
             {

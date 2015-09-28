@@ -27,6 +27,7 @@ using System.Collections.Generic;
 using System.Linq;
 using LeagueSharp;
 using LeagueSharp.Common;
+using SFXGraves.Enumerations;
 using SFXGraves.Library;
 using SFXGraves.Library.Logger;
 
@@ -36,169 +37,181 @@ namespace SFXGraves.Managers
 {
     internal class UltimateManager
     {
-        private static Menu _menu;
-        private static bool _auto;
-        private static bool _interrupt;
-        private static bool _gapcloser;
-        private static bool _flash;
-        private static bool _assisted;
-        private static bool _required;
-        private static bool _force;
+        private Menu _menu;
+        public bool Combo { get; set; }
+        public bool Assisted { get; set; }
+        public bool Auto { get; set; }
+        public bool Flash { get; set; }
+        public bool Required { get; set; }
+        public bool Gapcloser { get; set; }
+        public bool GapcloserDelay { get; set; }
+        public bool Interrupt { get; set; }
+        public bool InterruptDelay { get; set; }
+        public Func<Obj_AI_Hero, float> DamageCalculation { get; set; }
 
-        public static Menu AddToMenu(Menu menu,
-            bool auto,
-            bool autoInterrupt,
-            bool interruptDelay,
-            bool autoGapcloser,
-            bool gapcloserDelay,
-            bool flash,
-            bool assisted,
-            bool required,
-            bool force)
+        public Menu AddToMenu(Menu menu)
         {
             try
             {
-                _auto = auto;
-                _interrupt = autoInterrupt;
-                _gapcloser = autoGapcloser;
-                _flash = flash;
-                _assisted = assisted;
-                _required = required;
-                _force = force;
                 _menu = menu;
 
                 var ultimateMenu = menu.AddSubMenu(new Menu("Ultimate", menu.Name + ".ultimate"));
 
-                var uComboMenu = ultimateMenu.AddSubMenu(new Menu("Combo", ultimateMenu.Name + ".combo"));
-                uComboMenu.AddItem(new MenuItem(uComboMenu.Name + ".min", "R " + "Min").SetValue(new Slider(2, 1, 5)));
-                uComboMenu.AddItem(new MenuItem(uComboMenu.Name + ".duel", "Duel").SetValue(true));
-                uComboMenu.AddItem(new MenuItem(uComboMenu.Name + ".enabled", "Enabled").SetValue(true));
+                if (Required)
+                {
+                    var requiredMenu =
+                        ultimateMenu.AddSubMenu(new Menu("Required Targets", ultimateMenu.Name + ".required"));
 
-                if (auto)
+                    var modes = new List<string>();
+                    if (Combo)
+                    {
+                        modes.Add("Combo");
+                    }
+                    if (Auto)
+                    {
+                        modes.Add("Auto");
+                    }
+                    if (Flash)
+                    {
+                        modes.Add("Flash");
+                    }
+                    if (Assisted)
+                    {
+                        modes.Add("Assisted");
+                    }
+
+                    requiredMenu.AddItem(
+                        new MenuItem(requiredMenu.Name + ".mode", "Mode").SetValue(new StringList(modes.ToArray())))
+                        .ValueChanged +=
+                        delegate(object sender, OnValueChangeEventArgs eventArgs)
+                        {
+                            UpdateVisibileTags(requiredMenu, eventArgs.GetNewValue<StringList>().SelectedIndex + 1);
+                        };
+
+                    for (var i = 0; i < modes.Count; i++)
+                    {
+                        requiredMenu.AddItem(
+                            new MenuItem(requiredMenu.Name + "." + modes[i].ToLower() + ".min", "Min. Required")
+                                .SetValue(new Slider(1, 1, 5)).DontSave()).SetTag(i + 1);
+                        HeroListManager.AddToMenu(
+                            requiredMenu, "ultimate-required-" + modes[i].ToLower(), true, false, true, false, false,
+                            true, i + 1);
+                    }
+
+                    UpdateVisibileTags(
+                        requiredMenu, _menu.Item(requiredMenu.Name + ".mode").GetValue<StringList>().SelectedIndex + 1);
+                }
+
+                if (Combo)
+                {
+                    var uComboMenu = ultimateMenu.AddSubMenu(new Menu("Combo", ultimateMenu.Name + ".combo"));
+                    uComboMenu.AddItem(
+                        new MenuItem(uComboMenu.Name + ".min", "Min. Hits").SetValue(new Slider(2, 1, 5)));
+                    if (DamageCalculation != null)
+                    {
+                        uComboMenu.AddItem(
+                            new MenuItem(uComboMenu.Name + ".damage-check", "Damage Check").SetValue(true));
+                    }
+                    uComboMenu.AddItem(new MenuItem(uComboMenu.Name + ".enabled", "Enabled").SetValue(true));
+                }
+
+                if (Auto)
                 {
                     var uAutoMenu = ultimateMenu.AddSubMenu(new Menu("Auto", ultimateMenu.Name + ".auto"));
-                    if (autoInterrupt)
+                    if (Interrupt)
                     {
                         var autoInterruptMenu =
-                            uAutoMenu.AddSubMenu(new Menu("Interrupt Spell", uAutoMenu.Name + ".interrupt"));
-                        if (interruptDelay)
+                            uAutoMenu.AddSubMenu(new Menu("Interrupt", uAutoMenu.Name + ".interrupt"));
+                        if (InterruptDelay)
                         {
                             DelayManager.AddToMenu(
-                                autoInterruptMenu, "ultimate-interrupt-delay", string.Empty, 250, 0, 1000);
+                                autoInterruptMenu, "ultimate-interrupt-delay", string.Empty, 0, 0, 500);
                         }
                         HeroListManager.AddToMenu(autoInterruptMenu, "ultimate-interrupt", false, false, true, false);
                     }
-                    if (autoGapcloser)
+                    if (Gapcloser)
                     {
                         var autoGapcloserMenu =
                             uAutoMenu.AddSubMenu(new Menu("Gapcloser", uAutoMenu.Name + ".gapcloser"));
-                        if (gapcloserDelay)
+                        if (GapcloserDelay)
                         {
                             DelayManager.AddToMenu(
-                                autoGapcloserMenu, "ultimate-gapcloser-delay", string.Empty, 250, 0, 1000);
+                                autoGapcloserMenu, "ultimate-gapcloser-delay", string.Empty, 0, 0, 500);
                         }
                         HeroListManager.AddToMenu(autoGapcloserMenu, "ultimate-gapcloser", false, false, true, false);
                     }
-                    uAutoMenu.AddItem(new MenuItem(uAutoMenu.Name + ".min", "R " + "Min").SetValue(new Slider(3, 1, 5)));
-                    uAutoMenu.AddItem(new MenuItem(uAutoMenu.Name + ".duel", "Duel").SetValue(false));
+                    uAutoMenu.AddItem(new MenuItem(uAutoMenu.Name + ".min", "Min. Hits").SetValue(new Slider(3, 1, 5)));
+                    if (DamageCalculation != null)
+                    {
+                        uAutoMenu.AddItem(new MenuItem(uAutoMenu.Name + ".damage-check", "Damage Check").SetValue(true));
+                    }
                     uAutoMenu.AddItem(new MenuItem(uAutoMenu.Name + ".enabled", "Enabled").SetValue(true));
                 }
 
-                if (flash)
+                if (Flash)
                 {
                     var uFlashMenu = ultimateMenu.AddSubMenu(new Menu("Flash", ultimateMenu.Name + ".flash"));
                     uFlashMenu.AddItem(
-                        new MenuItem(uFlashMenu.Name + ".min", "R " + "Min").SetValue(new Slider(3, 1, 5)));
-                    uFlashMenu.AddItem(new MenuItem(uFlashMenu.Name + ".duel", "Duel").SetValue(true));
+                        new MenuItem(uFlashMenu.Name + ".min", "Min. Hits").SetValue(new Slider(1, 1, 5)));
                     uFlashMenu.AddItem(
                         new MenuItem(uFlashMenu.Name + ".hotkey", "Hotkey").SetValue(
-                            new KeyBind('U', KeyBindType.Press)));
+                            new KeyBind('Y', KeyBindType.Press)));
                     uFlashMenu.AddItem(new MenuItem(uFlashMenu.Name + ".move-cursor", "Move to Cursor").SetValue(true));
+                    if (DamageCalculation != null)
+                    {
+                        uFlashMenu.AddItem(
+                            new MenuItem(uFlashMenu.Name + ".damage-check", "Damage Check").SetValue(true));
+                    }
                     uFlashMenu.AddItem(new MenuItem(uFlashMenu.Name + ".enabled", "Enabled").SetValue(true));
                 }
 
-                if (assisted)
+                if (Assisted)
                 {
                     var uAssistedMenu = ultimateMenu.AddSubMenu(new Menu("Assisted", ultimateMenu.Name + ".assisted"));
                     uAssistedMenu.AddItem(
-                        new MenuItem(uAssistedMenu.Name + ".min", "R " + "Min").SetValue(new Slider(3, 1, 5)));
-                    uAssistedMenu.AddItem(new MenuItem(uAssistedMenu.Name + ".duel", "Duel").SetValue(true));
+                        new MenuItem(uAssistedMenu.Name + ".min", "Min. Hits").SetValue(new Slider(1, 1, 5)));
                     uAssistedMenu.AddItem(
                         new MenuItem(uAssistedMenu.Name + ".hotkey", "Hotkey").SetValue(
-                            new KeyBind('R', KeyBindType.Press)));
+                            new KeyBind('T', KeyBindType.Press)));
                     uAssistedMenu.AddItem(
                         new MenuItem(uAssistedMenu.Name + ".move-cursor", "Move to Cursor").SetValue(true));
+                    if (DamageCalculation != null)
+                    {
+                        uAssistedMenu.AddItem(
+                            new MenuItem(uAssistedMenu.Name + ".damage-check", "Damage Check").SetValue(true));
+                    }
                     uAssistedMenu.AddItem(new MenuItem(uAssistedMenu.Name + ".enabled", "Enabled").SetValue(true));
                 }
 
-                var uDuelMenu = ultimateMenu.AddSubMenu(new Menu("Duel Settings", ultimateMenu.Name + ".duel"));
+                var uSingleMenu = ultimateMenu.AddSubMenu(new Menu("Single", ultimateMenu.Name + ".single"));
+                uSingleMenu.AddItem(
+                    new MenuItem(uSingleMenu.Name + ".max-allies", "Max. Allies in Range").SetValue(new Slider(3, 0, 4)));
+                uSingleMenu.AddItem(
+                    new MenuItem(uSingleMenu.Name + ".max-enemies", "Max. Enemies in Range").SetValue(
+                        new Slider(1, 1, 5)));
 
-                var uDuelAlliesMenu = uDuelMenu.AddSubMenu(new Menu("Allies", uDuelMenu.Name + ".allies"));
-
-                uDuelAlliesMenu.AddItem(
-                    new MenuItem(uDuelAlliesMenu.Name + ".range", "Max Allies Range").SetValue(
-                        new Slider(1500, 500, 3000)));
-                uDuelAlliesMenu.AddItem(
-                    new MenuItem(uDuelAlliesMenu.Name + ".min", "Min Allies").SetValue(new Slider(0, 0, 4)));
-                uDuelAlliesMenu.AddItem(
-                    new MenuItem(uDuelAlliesMenu.Name + ".max", "Max Allies").SetValue(new Slider(3, 0, 4)));
-
-                var uDuelEnemiesMenu = uDuelMenu.AddSubMenu(new Menu("Enemies", uDuelMenu.Name + ".enemies"));
-
-                uDuelEnemiesMenu.AddItem(
-                    new MenuItem(uDuelEnemiesMenu.Name + ".range", "Max Enemies Range").SetValue(
-                        new Slider(2500, 500, 3000)));
-                uDuelEnemiesMenu.AddItem(
-                    new MenuItem(uDuelEnemiesMenu.Name + ".min", "Min Enemies").SetValue(new Slider(1, 1, 5)));
-                uDuelEnemiesMenu.AddItem(
-                    new MenuItem(uDuelEnemiesMenu.Name + ".max", "Max Enemies").SetValue(new Slider(1, 1, 5)));
-
-                var uDuelTargetMenu = uDuelMenu.AddSubMenu(new Menu("Target", uDuelMenu.Name + ".target"));
-
-                uDuelTargetMenu.AddItem(
-                    new MenuItem(uDuelTargetMenu.Name + ".min-health", "Min Target Health %").SetValue(
-                        new Slider(15, 10)));
-                uDuelTargetMenu.AddItem(
-                    new MenuItem(uDuelTargetMenu.Name + ".max-health", "Max Target Health %").SetValue(
-                        new Slider(100, 10)));
-
-                var uDuelDamageMenu = uDuelMenu.AddSubMenu(new Menu("Damage", uDuelMenu.Name + ".damage"));
-
-                uDuelDamageMenu.AddItem(
-                    new MenuItem(uDuelDamageMenu.Name + ".percent", "Combo Damage %").SetValue(new Slider(100, 1, 200)));
-
-                if (required)
+                if (Combo)
                 {
-                    var uRequiredMenu =
-                        ultimateMenu.AddSubMenu(new Menu("Required Target", ultimateMenu.Name + ".required"));
-
-                    var requiredComboMenu = uRequiredMenu.AddSubMenu(new Menu("Combo", uRequiredMenu.Name + ".combo"));
-                    requiredComboMenu.AddItem(
-                        new MenuItem(requiredComboMenu.Name + ".min", "Min").SetValue(new Slider(0, 0, 5)).DontSave());
-                    HeroListManager.AddToMenu(
-                        requiredComboMenu, "ultimate-required-combo", true, false, true, false, true);
-
-                    var requiredAutoMenu = uRequiredMenu.AddSubMenu(new Menu("Auto", uRequiredMenu.Name + ".auto"));
-                    requiredAutoMenu.AddItem(
-                        new MenuItem(requiredAutoMenu.Name + ".min", "Min").SetValue(new Slider(0, 0, 5)).DontSave());
-                    HeroListManager.AddToMenu(
-                        requiredAutoMenu, "ultimate-required-auto", true, false, true, false, true);
-
-
-                    uRequiredMenu.AddItem(
-                        new MenuItem(uRequiredMenu.Name + ".range-check", "Range Check").SetValue(
-                            new Slider(2000, 1000, 3000)));
+                    uSingleMenu.AddItem(new MenuItem(uSingleMenu.Name + ".combo", "Combo").SetValue(true));
+                }
+                if (Auto)
+                {
+                    uSingleMenu.AddItem(new MenuItem(uSingleMenu.Name + ".auto", "Auto").SetValue(false));
+                }
+                if (Assisted)
+                {
+                    uSingleMenu.AddItem(new MenuItem(uSingleMenu.Name + ".assisted", "Assisted").SetValue(false));
+                }
+                if (Flash)
+                {
+                    uSingleMenu.AddItem(new MenuItem(uSingleMenu.Name + ".flash", "Flash").SetValue(false));
                 }
 
-                if (force)
+                if (DamageCalculation != null)
                 {
-                    var uForceMenu = ultimateMenu.AddSubMenu(new Menu("Force Target", ultimateMenu.Name + ".force"));
-                    uForceMenu.AddItem(
-                        new MenuItem(uForceMenu.Name + ".additional", "Additional Targets").SetValue(
-                            new Slider(0, 0, 4)).DontSave());
-                    uForceMenu.AddItem(
-                        new MenuItem(uForceMenu.Name + ".combo-killable", "Combo Killable").SetValue(false).DontSave());
-                    HeroListManager.AddToMenu(uForceMenu, "ultimate-force", true, false, true, false, true);
+                    ultimateMenu.AddItem(
+                        new MenuItem(ultimateMenu.Name + ".damage-percent", "Damage Check %").SetValue(
+                            new Slider(100, 1, 200)));
                 }
 
                 return ultimateMenu;
@@ -210,80 +223,153 @@ namespace SFXGraves.Managers
             return null;
         }
 
-        public static bool Combo()
+        private void UpdateVisibileTags(Menu menu, int tag)
         {
-            return _menu != null && _menu.Item(_menu.Name + ".ultimate.combo.enabled").GetValue<bool>();
+            foreach (var menuItem in menu.Items)
+            {
+                if (menuItem.Tag != 0)
+                {
+                    menuItem.Show(false);
+                }
+
+                if (menuItem.Tag == tag)
+                {
+                    menuItem.Show();
+                }
+            }
         }
 
-        public static bool Auto()
+        public bool IsActive(UltimateModeType mode, Obj_AI_Hero hero = null)
         {
-            return _menu != null && _auto && _menu.Item(_menu.Name + ".ultimate.auto.enabled").GetValue<bool>();
+            if (_menu != null)
+            {
+                if (mode == UltimateModeType.Combo)
+                {
+                    return Combo && _menu.Item(_menu.Name + ".ultimate.combo.enabled").GetValue<bool>();
+                }
+                if (mode == UltimateModeType.Auto)
+                {
+                    return Auto && _menu.Item(_menu.Name + ".ultimate.auto.enabled").GetValue<bool>();
+                }
+                if (mode == UltimateModeType.Flash)
+                {
+                    return Flash && _menu.Item(_menu.Name + ".ultimate.flash.enabled").GetValue<bool>() &&
+                           _menu.Item(_menu.Name + ".ultimate.flash.hotkey").GetValue<KeyBind>().Active;
+                }
+                if (mode == UltimateModeType.Assisted)
+                {
+                    return Assisted && _menu.Item(_menu.Name + ".ultimate.assisted.enabled").GetValue<bool>() &&
+                           _menu.Item(_menu.Name + ".ultimate.assisted.hotkey").GetValue<KeyBind>().Active;
+                }
+                if (mode == UltimateModeType.Interrupt)
+                {
+                    return Auto && Interrupt && hero != null &&
+                           _menu.Item(_menu.Name + ".ultimate.auto.enabled").GetValue<bool>() &&
+                           HeroListManager.Check("ultimate-interrupt", hero);
+                }
+                if (mode == UltimateModeType.Gapcloser)
+                {
+                    return Auto && Gapcloser && hero != null &&
+                           _menu.Item(_menu.Name + ".ultimate.auto.enabled").GetValue<bool>() &&
+                           HeroListManager.Check("ultimate-gapcloser", hero);
+                }
+            }
+            return false;
         }
 
-        public static bool Interrupt(Obj_AI_Hero hero)
+        public bool ShouldMove(UltimateModeType mode)
         {
-            return _menu != null && _interrupt && _menu.Item(_menu.Name + ".ultimate.auto.enabled").GetValue<bool>() &&
-                   HeroListManager.Check("ultimate-interrupt", hero);
+            if (_menu != null)
+            {
+                var enabled = _menu.Item(_menu.Name + ".ultimate." + mode.ToString().ToLower() + ".move-cursor");
+                return enabled != null && enabled.GetValue<bool>();
+            }
+            return false;
         }
 
-        public static bool Gapcloser(Obj_AI_Hero hero)
+        public bool ShouldSingle(UltimateModeType mode)
         {
-            return _menu != null && _gapcloser && _menu.Item(_menu.Name + ".ultimate.auto.enabled").GetValue<bool>() &&
-                   HeroListManager.Check("ultimate-gapcloser", hero);
+            if (_menu != null)
+            {
+                var enabled = _menu.Item(_menu.Name + ".ultimate.single." + mode.ToString().ToLower());
+                return enabled != null && enabled.GetValue<bool>();
+            }
+            return false;
         }
 
-        public static bool Flash()
+        public float GetDamage(Obj_AI_Hero hero)
         {
-            return _menu != null && _flash && _menu.Item(_menu.Name + ".ultimate.flash.enabled").GetValue<bool>() &&
-                   _menu.Item(_menu.Name + ".ultimate.flash.hotkey").GetValue<KeyBind>().Active;
+            if (DamageCalculation != null)
+            {
+                try
+                {
+                    return DamageCalculation(hero) / 100f *
+                           _menu.Item(_menu.Name + ".ultimate.damage-percent").GetValue<Slider>().Value;
+                }
+                catch (Exception ex)
+                {
+                    Global.Logger.AddItem(new LogItem(ex));
+                }
+            }
+            return 0f;
         }
 
-        public static bool Assisted()
-        {
-            return _menu != null && _assisted && _menu.Item(_menu.Name + ".ultimate.assisted.enabled").GetValue<bool>() &&
-                   _menu.Item(_menu.Name + ".ultimate.assisted.hotkey").GetValue<KeyBind>().Active;
-        }
-
-        public static bool CheckDuel(Obj_AI_Hero target, float damage)
+        public bool CheckSingle(UltimateModeType mode, Obj_AI_Hero target)
         {
             try
             {
+                var modeString = mode.ToString().ToLower();
                 if (_menu == null || target == null || !target.IsValidTarget())
                 {
                     return false;
                 }
 
-                var alliesRange = _menu.Item(_menu.Name + ".ultimate.duel.allies.range").GetValue<Slider>().Value;
-                var alliesMin = _menu.Item(_menu.Name + ".ultimate.duel.allies.min").GetValue<Slider>().Value;
-                var alliesMax = _menu.Item(_menu.Name + ".ultimate.duel.allies.max").GetValue<Slider>().Value;
-
-                var enemiesRange = _menu.Item(_menu.Name + ".ultimate.duel.enemies.range").GetValue<Slider>().Value;
-                var enemiesMin = _menu.Item(_menu.Name + ".ultimate.duel.enemies.min").GetValue<Slider>().Value;
-                var enemiesMax = _menu.Item(_menu.Name + ".ultimate.duel.enemies.max").GetValue<Slider>().Value;
-
-                var targetMinHealth =
-                    _menu.Item(_menu.Name + ".ultimate.duel.target.min-health").GetValue<Slider>().Value;
-                var targetMaxHealth =
-                    _menu.Item(_menu.Name + ".ultimate.duel.target.max-health").GetValue<Slider>().Value;
-
-                if (target.HealthPercent >= targetMinHealth && target.HealthPercent <= targetMaxHealth)
+                if (ShouldSingle(mode))
                 {
+                    var alliesMax = _menu.Item(_menu.Name + ".ultimate.single.max-allies").GetValue<Slider>().Value;
+                    var enemiesMax = _menu.Item(_menu.Name + ".ultimate.single.max-enemies").GetValue<Slider>().Value;
+
                     var pos = ObjectManager.Player.Position.Extend(
                         target.Position, ObjectManager.Player.Distance(target) / 2f);
-
                     var aCount =
-                        GameObjects.AllyHeroes.Count(
-                            h => h.IsValid && !h.IsMe && !h.IsDead && h.Distance(pos) <= alliesRange);
+                        GameObjects.AllyHeroes.Count(h => h.IsValid && !h.IsMe && !h.IsDead && h.Distance(pos) <= 1750);
                     var eCount =
                         GameObjects.EnemyHeroes.Count(
-                            h => h.IsValid && !h.IsDead && h.IsVisible && h.Distance(pos) <= enemiesRange);
+                            h => h.IsValid && !h.IsDead && h.IsVisible && h.Distance(pos) <= 1750);
 
-                    if (aCount >= alliesMin && aCount <= alliesMax && eCount >= enemiesMin && eCount <= enemiesMax)
+                    if (aCount > alliesMax || eCount > enemiesMax)
                     {
-                        return damage *
-                               (_menu.Item(_menu.Name + ".ultimate.duel.damage.percent").GetValue<Slider>().Value / 100f) >
-                               target.Health;
+                        return false;
                     }
+
+                    if (Required && HeroListManager.Enabled("ultimate-required-" + modeString))
+                    {
+                        var minReq =
+                            _menu.Item(_menu.Name + ".ultimate." + modeString + ".required.min")
+                                .GetValue<Slider>()
+                                .Value;
+                        var enabledHeroes = HeroListManager.GetEnabledHeroes("ultimate-required-" + modeString);
+                        if (minReq > 0 && enabledHeroes.Count > 0)
+                        {
+                            if (
+                                !enabledHeroes.Where(
+                                    e => !e.IsDead && e.IsVisible && e.Distance(ObjectManager.Player) <= 2000)
+                                    .Any(e => e.NetworkId.Equals(target.NetworkId)))
+                            {
+                                return false;
+                            }
+                        }
+                    }
+                    if (DamageCalculation != null &&
+                        _menu.Item(_menu.Name + ".ultimate." + modeString + ".damage-check").GetValue<bool>())
+                    {
+                        if (GetDamage(target) < target.Health)
+                        {
+                            return false;
+                        }
+                    }
+
+                    return true;
                 }
             }
             catch (Exception ex)
@@ -293,48 +379,50 @@ namespace SFXGraves.Managers
             return false;
         }
 
-        public static bool Check(string mode,
-            int min,
-            List<Obj_AI_Hero> hits,
-            Func<Obj_AI_Hero, float> calcDamage = null)
+        public bool Check(UltimateModeType mode, List<Obj_AI_Hero> hits)
         {
             try
             {
-                if (_menu == null || hits == null || !hits.Any())
+                var modeString = mode.ToString().ToLower();
+                if (_menu == null || hits == null || !hits.Any(h => h.IsValidTarget()))
                 {
                     return false;
                 }
-
-                if (_force && HeroListManager.Enabled("ultimate-force"))
+                if (IsActive(mode))
                 {
-                    var killable = _menu.Item(_menu.Name + ".ultimate.force.combo-killable").GetValue<bool>();
-                    var additional = _menu.Item(_menu.Name + ".ultimate.force.additional").GetValue<Slider>().Value;
-                    if (
-                        hits.Any(
-                            hit =>
-                                HeroListManager.Check("ultimate-force", hit) &&
-                                (!killable || calcDamage == null || calcDamage(hit) > hit.Health)) &&
-                        hits.Count >= additional + 1)
+                    if (mode != UltimateModeType.Gapcloser && mode != UltimateModeType.Interrupt)
                     {
-                        return true;
+                        if (Required && HeroListManager.Enabled("ultimate-required-" + modeString))
+                        {
+                            var minReq =
+                                _menu.Item(_menu.Name + ".ultimate." + modeString + ".required.min")
+                                    .GetValue<Slider>()
+                                    .Value;
+                            var enabledHeroes = HeroListManager.GetEnabledHeroes("ultimate-required-" + modeString);
+                            if (minReq > 0 && enabledHeroes.Count > 0)
+                            {
+                                var count =
+                                    enabledHeroes.Where(
+                                        e => !e.IsDead && e.IsVisible && e.Distance(ObjectManager.Player) <= 2000)
+                                        .Count(e => hits.Any(h => h.NetworkId.Equals(e.NetworkId)));
+                                if (count < minReq)
+                                {
+                                    return false;
+                                }
+                            }
+                        }
+                        if (DamageCalculation != null &&
+                            _menu.Item(_menu.Name + ".ultimate." + modeString + ".damage-check").GetValue<bool>())
+                        {
+                            if (hits.All(h => GetDamage(h) < h.Health))
+                            {
+                                return false;
+                            }
+                        }
                     }
+                    return hits.Count >=
+                           _menu.Item(_menu.Name + ".ultimate." + modeString + ".min").GetValue<Slider>().Value;
                 }
-
-                if (_required && HeroListManager.Enabled("ultimate-required-" + mode))
-                {
-                    var minReq = _menu.Item(_menu.Name + ".ultimate.required." + mode + ".min").GetValue<Slider>().Value;
-                    var range = _menu.Item(_menu.Name + ".ultimate.required.range-check").GetValue<Slider>().Value;
-                    var enabledHeroes = HeroListManager.GetEnabledHeroes("ultimate-required-" + mode);
-                    var count =
-                        enabledHeroes.Where(e => !e.IsDead && e.IsVisible && e.Distance(ObjectManager.Player) <= range)
-                            .Count(e => hits.Any(h => h.NetworkId.Equals(e.NetworkId)));
-                    if (count < minReq)
-                    {
-                        return false;
-                    }
-                }
-
-                return hits.Count >= min;
             }
             catch (Exception ex)
             {

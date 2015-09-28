@@ -45,6 +45,8 @@ namespace SFXGraves.Champions
 {
     internal class Graves : Champion
     {
+        private UltimateManager _ultimate;
+
         protected override ItemFlags ItemFlags
         {
             get { return ItemFlags.Offensive | ItemFlags.Defensive | ItemFlags.Flee; }
@@ -59,25 +61,36 @@ namespace SFXGraves.Champions
 
         protected override void OnLoad()
         {
-            Core.OnPostUpdate += OnCorePostUpdate;
             AntiGapcloser.OnEnemyGapcloser += OnEnemyGapcloser;
-        }
 
-        protected override void OnUnload()
-        {
-            Core.OnPostUpdate -= OnCorePostUpdate;
-            AntiGapcloser.OnEnemyGapcloser -= OnEnemyGapcloser;
+            _ultimate = new UltimateManager
+            {
+                Combo = true,
+                Assisted = true,
+                Auto = true,
+                Flash = false,
+                Required = true,
+                Gapcloser = false,
+                GapcloserDelay = false,
+                Interrupt = false,
+                InterruptDelay = false,
+                DamageCalculation =
+                    hero =>
+                        CalcComboDamage(hero, Menu.Item(Menu.Name + ".combo.q").GetValue<bool>() && Q.IsReady(), true)
+            };
         }
 
         protected override void AddToMenu()
         {
+            _ultimate.AddToMenu(Menu);
+
             var comboMenu = Menu.AddSubMenu(new Menu("Combo", Menu.Name + ".combo"));
             HitchanceManager.AddToMenu(
                 comboMenu.AddSubMenu(new Menu("Hitchance", comboMenu.Name + ".hitchance")), "combo",
                 new Dictionary<string, HitChance>
                 {
-                    { "Q", HitChance.High },
-                    { "W", HitChance.High },
+                    { "Q", HitChance.VeryHigh },
+                    { "W", HitChance.VeryHigh },
                     { "R", HitChance.High }
                 });
             comboMenu.AddItem(new MenuItem(comboMenu.Name + ".q", "Use Q").SetValue(true));
@@ -93,26 +106,23 @@ namespace SFXGraves.Champions
 
             var laneclearMenu = Menu.AddSubMenu(new Menu("Lane Clear", Menu.Name + ".lane-clear"));
             ManaManager.AddToMenu(laneclearMenu, "lane-clear", ManaCheckType.Minimum, ManaValueType.Percent);
-            laneclearMenu.AddItem(
-                new MenuItem(laneclearMenu.Name + ".q-min", "Q " + "Min").SetValue(new Slider(3, 1, 5)));
             laneclearMenu.AddItem(new MenuItem(laneclearMenu.Name + ".q", "Use Q").SetValue(true));
-
-            UltimateManager.AddToMenu(Menu, true, false, false, false, false, false, true, true, true);
-
-            var killstealMenu = Menu.AddSubMenu(new Menu("Killsteal", Menu.Name + ".killsteal"));
-            killstealMenu.AddItem(new MenuItem(killstealMenu.Name + ".q", "Use Q").SetValue(true));
+            laneclearMenu.AddItem(new MenuItem(laneclearMenu.Name + ".q-min", "Q Min.").SetValue(new Slider(3, 1, 5)));
 
             var fleeMenu = Menu.AddSubMenu(new Menu("Flee", Menu.Name + ".flee"));
             fleeMenu.AddItem(new MenuItem(fleeMenu.Name + ".e", "Use E").SetValue(true));
 
-            var miscMenu = Menu.AddSubMenu(new Menu("Miscellaneous", Menu.Name + ".miscellaneous"));
+            var killstealMenu = Menu.AddSubMenu(new Menu("Killsteal", Menu.Name + ".killsteal"));
+            killstealMenu.AddItem(new MenuItem(killstealMenu.Name + ".q", "Use Q").SetValue(true));
+
+            var miscMenu = Menu.AddSubMenu(new Menu("Misc", Menu.Name + ".miscellaneous"));
 
             HeroListManager.AddToMenu(
-                miscMenu.AddSubMenu(new Menu("W " + "Gapcloser", miscMenu.Name + "w-gapcloser")), "w-gapcloser", false,
-                false, true, false);
+                miscMenu.AddSubMenu(new Menu("W Gapcloser", miscMenu.Name + "w-gapcloser")), "w-gapcloser", false, false,
+                true, false, false, false);
             HeroListManager.AddToMenu(
-                miscMenu.AddSubMenu(new Menu("E " + "Gapcloser", miscMenu.Name + "e-gapcloser")), "e-gapcloser", false,
-                false, true, false);
+                miscMenu.AddSubMenu(new Menu("E Gapcloser", miscMenu.Name + "e-gapcloser")), "e-gapcloser", false, false,
+                true, false);
 
             IndicatorManager.AddToMenu(DrawingManager.Menu, true);
             IndicatorManager.Add(Q);
@@ -138,42 +148,29 @@ namespace SFXGraves.Champions
             R2.SetSkillshot(0f, (float) (60 * Math.PI / 180), 1500f, false, SkillshotType.SkillshotCone);
         }
 
-        private void OnCorePostUpdate(EventArgs args)
-        {
-            try
-            {
-                if (UltimateManager.Assisted() && R.IsReady())
-                {
-                    if (Menu.Item(Menu.Name + ".ultimate.assisted.move-cursor").GetValue<bool>())
-                    {
-                        Orbwalking.MoveTo(Game.CursorPos, Orbwalker.HoldAreaRadius);
-                    }
+        protected override void OnPreUpdate() {}
 
-                    if (
-                        !RLogic(
-                            TargetSelector.GetTarget(R),
-                            Menu.Item(Menu.Name + ".ultimate.assisted.min").GetValue<Slider>().Value,
-                            Menu.Item(Menu.Name + ".combo.q").GetValue<bool>() && Q.IsReady()))
-                    {
-                        RLogicDuel(Menu.Item(Menu.Name + ".combo.q").GetValue<bool>() && Q.IsReady());
-                    }
+        protected override void OnPostUpdate()
+        {
+            if (_ultimate.IsActive(UltimateModeType.Assisted) && R.IsReady())
+            {
+                if (_ultimate.ShouldMove(UltimateModeType.Assisted))
+                {
+                    Orbwalking.MoveTo(Game.CursorPos, Orbwalker.HoldAreaRadius);
                 }
 
-                if (UltimateManager.Auto() && R.IsReady())
+                if (!RLogic(UltimateModeType.Assisted, TargetSelector.GetTarget(R)))
                 {
-                    if (
-                        !RLogic(
-                            TargetSelector.GetTarget(R),
-                            Menu.Item(Menu.Name + ".ultimate.auto.min").GetValue<Slider>().Value,
-                            Menu.Item(Menu.Name + ".combo.q").GetValue<bool>() && Q.IsReady(), "auto"))
-                    {
-                        RLogicDuel(Menu.Item(Menu.Name + ".combo.q").GetValue<bool>() && Q.IsReady());
-                    }
+                    RLogicSingle(UltimateModeType.Assisted);
                 }
             }
-            catch (Exception ex)
+
+            if (_ultimate.IsActive(UltimateModeType.Auto) && R.IsReady())
             {
-                Global.Logger.AddItem(new LogItem(ex));
+                if (!RLogic(UltimateModeType.Auto, TargetSelector.GetTarget(R)))
+                {
+                    RLogicSingle(UltimateModeType.Auto);
+                }
             }
         }
 
@@ -193,9 +190,9 @@ namespace SFXGraves.Champions
                         W.Cast(args.End);
                     }
                 }
-                if (HeroListManager.Check("e-gapcloser", args.Sender) && E.IsInRange(args.End))
+                if (HeroListManager.Check("e-gapcloser", args.Sender))
                 {
-                    E.Cast(args.End);
+                    E.Cast(args.End.Extend(Player.Position, args.End.Distance(Player.Position) + E.Range));
                 }
             }
             catch (Exception ex)
@@ -209,7 +206,7 @@ namespace SFXGraves.Champions
             var useQ = Menu.Item(Menu.Name + ".combo.q").GetValue<bool>() && Q.IsReady();
             var useW = Menu.Item(Menu.Name + ".combo.w").GetValue<bool>() && W.IsReady();
             var useE = Menu.Item(Menu.Name + ".combo.e").GetValue<bool>() && E.IsReady();
-            var useR = UltimateManager.Combo() && R.IsReady();
+            var useR = _ultimate.IsActive(UltimateModeType.Combo) && R.IsReady();
 
             if (useQ)
             {
@@ -241,28 +238,27 @@ namespace SFXGraves.Champions
                 var target = TargetSelector.GetTarget(R);
                 if (target != null && Orbwalking.InAutoAttackRange(target))
                 {
-                    if (!RLogic(target, Menu.Item(Menu.Name + ".ultimate.combo.min").GetValue<Slider>().Value, useQ))
+                    if (!RLogic(UltimateModeType.Combo, target))
                     {
-                        if (Menu.Item(Menu.Name + ".ultimate.combo.duel").GetValue<bool>())
-                        {
-                            RLogicDuel(useQ);
-                        }
+                        RLogicSingle(UltimateModeType.Combo);
                     }
                 }
             }
         }
 
-        private bool RLogic(Obj_AI_Hero target, int min, bool q, string mode = "combo")
+        private bool RLogic(UltimateModeType mode, Obj_AI_Hero target)
         {
             try
             {
-                var hits = GetRHits(target);
-                if (UltimateManager.Check(mode, min, hits.Item2, hero => CalcComboDamage(hero, q, true)))
+                if (_ultimate.IsActive(mode))
                 {
-                    R.Cast(hits.Item3);
-                    return true;
+                    var hits = GetRHits(target);
+                    if (_ultimate.Check(mode, hits.Item2))
+                    {
+                        R.Cast(hits.Item3);
+                        return true;
+                    }
                 }
-                return false;
             }
             catch (Exception ex)
             {
@@ -271,16 +267,18 @@ namespace SFXGraves.Champions
             return false;
         }
 
-        private void RLogicDuel(bool q)
+        private void RLogicSingle(UltimateModeType mode)
         {
             try
             {
-                foreach (var t in GameObjects.EnemyHeroes)
+                if (_ultimate.ShouldSingle(mode))
                 {
-                    if (UltimateManager.CheckDuel(t, CalcComboDamage(t, q, true)))
+                    foreach (var target in GameObjects.EnemyHeroes.Where(t => _ultimate.CheckSingle(mode, t)))
                     {
-                        if (RLogic(t, 1, q))
+                        var hits = GetRHits(target);
+                        if (hits.Item1 > 0)
                         {
+                            R.Cast(hits.Item3);
                             break;
                         }
                     }

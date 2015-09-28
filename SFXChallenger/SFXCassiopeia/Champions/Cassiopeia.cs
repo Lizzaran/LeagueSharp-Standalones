@@ -56,6 +56,7 @@ namespace SFXCassiopeia.Champions
         private float _lastPoisonClearDelay;
         private float _lastQPoisonDelay;
         private Obj_AI_Base _lastQPoisonT;
+        private UltimateManager _ultimate;
         public Cassiopeia() : base(1500f) {}
 
         protected override ItemFlags ItemFlags
@@ -70,27 +71,44 @@ namespace SFXCassiopeia.Champions
 
         protected override void OnLoad()
         {
-            Core.OnPreUpdate += OnCorePreUpdate;
-            Core.OnPostUpdate += OnCorePostUpdate;
             Orbwalking.BeforeAttack += OnOrbwalkingBeforeAttack;
             AntiGapcloser.OnEnemyGapcloser += OnEnemyGapcloser;
             Interrupter2.OnInterruptableTarget += OnInterruptableTarget;
             CustomEvents.Unit.OnDash += OnUnitDash;
-        }
 
-        protected override void OnUnload()
-        {
-            Core.OnPreUpdate -= OnCorePreUpdate;
-            Core.OnPostUpdate -= OnCorePostUpdate;
-            Orbwalking.BeforeAttack -= OnOrbwalkingBeforeAttack;
-            AntiGapcloser.OnEnemyGapcloser -= OnEnemyGapcloser;
-            Interrupter2.OnInterruptableTarget -= OnInterruptableTarget;
-            CustomEvents.Unit.OnDash -= OnUnitDash;
+            _ultimate = new UltimateManager
+            {
+                Combo = true,
+                Assisted = true,
+                Auto = true,
+                Flash = true,
+                Required = true,
+                Gapcloser = true,
+                GapcloserDelay = false,
+                Interrupt = true,
+                InterruptDelay = false,
+                DamageCalculation =
+                    hero =>
+                        CalcComboDamage(
+                            hero, Menu.Item(Menu.Name + ".combo.q").GetValue<bool>() && Q.IsReady(),
+                            Menu.Item(Menu.Name + ".combo.w").GetValue<bool>() && W.IsReady(),
+                            Menu.Item(Menu.Name + ".combo.e").GetValue<bool>() && E.IsReady(), true)
+            };
         }
 
         protected override void AddToMenu()
         {
-            DrawingManager.Add("R " + "Flash", R.Range + SummonerManager.Flash.Range);
+            DrawingManager.Add("R Flash", R.Range + SummonerManager.Flash.Range);
+
+            var ultimateMenu = _ultimate.AddToMenu(Menu);
+
+            ultimateMenu.AddItem(
+                new MenuItem(ultimateMenu.Name + ".range", "Range").SetValue(new Slider(700, 400, 825))).ValueChanged +=
+                delegate(object sender, OnValueChangeEventArgs args)
+                {
+                    R.Range = args.GetNewValue<Slider>().Value;
+                    DrawingManager.Update("R Flash", args.GetNewValue<Slider>().Value + SummonerManager.Flash.Range);
+                };
 
             var comboMenu = Menu.AddSubMenu(new Menu("Combo", Menu.Name + ".combo"));
             HitchanceManager.AddToMenu(
@@ -123,51 +141,40 @@ namespace SFXCassiopeia.Champions
             laneclearMenu.AddItem(new MenuItem(laneclearMenu.Name + ".w", "Use W").SetValue(true));
             laneclearMenu.AddItem(new MenuItem(laneclearMenu.Name + ".e", "Use E").SetValue(true));
 
-            var lasthitMenu = Menu.AddSubMenu(new Menu("Lasthit", Menu.Name + ".lasthit"));
+            var lasthitMenu = Menu.AddSubMenu(new Menu("Last Hit", Menu.Name + ".lasthit"));
             ManaManager.AddToMenu(
                 lasthitMenu, "lasthit", ManaCheckType.Maximum, ManaValueType.Percent, string.Empty, 70);
             lasthitMenu.AddItem(new MenuItem(lasthitMenu.Name + ".e", "Use E").SetValue(true));
             lasthitMenu.AddItem(new MenuItem(lasthitMenu.Name + ".e-poison", "Use E Poison").SetValue(true));
 
-            var ultimateMenu = UltimateManager.AddToMenu(Menu, true, true, false, true, false, true, true, true, true);
-
-            ultimateMenu.AddItem(
-                new MenuItem(ultimateMenu.Name + ".range", "Range").SetValue(new Slider(700, 400, 825))).ValueChanged +=
-                delegate(object sender, OnValueChangeEventArgs args)
-                {
-                    R.Range = args.GetNewValue<Slider>().Value;
-                    DrawingManager.Update(
-                        "R " + "Flash", args.GetNewValue<Slider>().Value + SummonerManager.Flash.Range);
-                };
+            var fleeMenu = Menu.AddSubMenu(new Menu("Flee", Menu.Name + ".flee"));
+            fleeMenu.AddItem(new MenuItem(fleeMenu.Name + ".w", "Use W").SetValue(true));
 
             var killstealMenu = Menu.AddSubMenu(new Menu("Killsteal", Menu.Name + ".killsteal"));
             killstealMenu.AddItem(new MenuItem(killstealMenu.Name + ".e", "Use E").SetValue(true));
             killstealMenu.AddItem(new MenuItem(killstealMenu.Name + ".e-poison", "Use E Poison").SetValue(true));
 
-            var fleeMenu = Menu.AddSubMenu(new Menu("Flee", Menu.Name + ".flee"));
-            fleeMenu.AddItem(new MenuItem(fleeMenu.Name + ".w", "Use W").SetValue(true));
-
-            var miscMenu = Menu.AddSubMenu(new Menu("Miscellaneous", Menu.Name + ".miscellaneous"));
+            var miscMenu = Menu.AddSubMenu(new Menu("Misc", Menu.Name + ".miscellaneous"));
             DelayManager.AddToMenu(miscMenu, "e-delay", "E", 250, 0, 1000);
             HeroListManager.AddToMenu(
-                miscMenu.AddSubMenu(new Menu("Q " + "Gapcloser", miscMenu.Name + "q-gapcloser")), "q-gapcloser", false,
-                false, true, false);
-            HeroListManager.AddToMenu(
-                miscMenu.AddSubMenu(new Menu("Q " + "Fleeing", miscMenu.Name + "q-fleeing")), "q-fleeing", false, false,
+                miscMenu.AddSubMenu(new Menu("Q Gapcloser", miscMenu.Name + "q-gapcloser")), "q-gapcloser", false, false,
                 true, false);
             HeroListManager.AddToMenu(
-                miscMenu.AddSubMenu(new Menu("W " + "Gapcloser", miscMenu.Name + "w-gapcloser")), "w-gapcloser", false,
-                false, true, false);
+                miscMenu.AddSubMenu(new Menu("Q Fleeing", miscMenu.Name + "q-fleeing")), "q-fleeing", false, false, true,
+                false);
             HeroListManager.AddToMenu(
-                miscMenu.AddSubMenu(new Menu("W " + "Immobile", miscMenu.Name + "w-immobile")), "w-immobile", false,
-                false, true, false);
-            HeroListManager.AddToMenu(
-                miscMenu.AddSubMenu(new Menu("W " + "Fleeing", miscMenu.Name + "w-fleeing")), "w-fleeing", false, false,
+                miscMenu.AddSubMenu(new Menu("W Gapcloser", miscMenu.Name + "w-gapcloser")), "w-gapcloser", false, false,
                 true, false);
+            HeroListManager.AddToMenu(
+                miscMenu.AddSubMenu(new Menu("W Immobile", miscMenu.Name + "w-immobile")), "w-immobile", false, false,
+                true, false);
+            HeroListManager.AddToMenu(
+                miscMenu.AddSubMenu(new Menu("W Fleeing", miscMenu.Name + "w-fleeing")), "w-fleeing", false, false, true,
+                false);
 
             R.Range = Menu.Item(Menu.Name + ".ultimate.range").GetValue<Slider>().Value;
             DrawingManager.Update(
-                "R " + "Flash",
+                "R Flash",
                 Menu.Item(Menu.Name + ".ultimate.range").GetValue<Slider>().Value + SummonerManager.Flash.Range);
 
             IndicatorManager.AddToMenu(DrawingManager.Menu, true);
@@ -197,188 +204,125 @@ namespace SFXCassiopeia.Champions
             R.SetSkillshot(0.8f, (float) (80 * Math.PI / 180), float.MaxValue, false, SkillshotType.SkillshotCone);
         }
 
-        private void OnCorePreUpdate(EventArgs args)
+        protected override void OnPreUpdate()
         {
-            try
+            if ((Orbwalker.ActiveMode == Orbwalking.OrbwalkingMode.LastHit && ManaManager.Check("lasthit")) &&
+                E.IsReady())
             {
-                if ((Orbwalker.ActiveMode == Orbwalking.OrbwalkingMode.LastHit && ManaManager.Check("lasthit")) &&
-                    E.IsReady())
+                var ePoison = Menu.Item(Menu.Name + ".lasthit.e-poison").GetValue<bool>();
+                var eHit = Menu.Item(Menu.Name + ".lasthit.e").GetValue<bool>();
+                if (eHit || ePoison)
                 {
-                    var ePoison = Menu.Item(Menu.Name + ".lasthit.e-poison").GetValue<bool>();
-                    var eHit = Menu.Item(Menu.Name + ".lasthit.e").GetValue<bool>();
-                    if (eHit || ePoison)
+                    var m =
+                        MinionManager.GetMinions(Player.ServerPosition, E.Range, MinionTypes.All, MinionTeam.NotAlly)
+                            .FirstOrDefault(
+                                e =>
+                                    e.Health < E.GetDamage(e) - 5 &&
+                                    (ePoison && GetPoisonBuffEndTime(e) > E.ArrivalTime(e) || eHit));
+                    if (m != null)
                     {
-                        var m =
-                            MinionManager.GetMinions(
-                                Player.ServerPosition, E.Range, MinionTypes.All, MinionTeam.NotAlly)
-                                .FirstOrDefault(
-                                    e =>
-                                        e.Health < E.GetDamage(e) - 5 &&
-                                        (ePoison && GetPoisonBuffEndTime(e) > E.ArrivalTime(e) || eHit));
-                        if (m != null)
-                        {
-                            Casting.TargetSkill(m, E);
-                        }
+                        Casting.TargetSkill(m, E);
                     }
                 }
-            }
-            catch (Exception ex)
-            {
-                Global.Logger.AddItem(new LogItem(ex));
             }
         }
 
-        private void OnCorePostUpdate(EventArgs args)
+        protected override void OnPostUpdate()
         {
-            try
+            if (_ultimate.IsActive(UltimateModeType.Flash) && R.IsReady() && SummonerManager.Flash.IsReady())
             {
-                if (UltimateManager.Flash() && R.IsReady() && SummonerManager.Flash.IsReady())
+                if (_ultimate.ShouldMove(UltimateModeType.Flash))
                 {
-                    if (Menu.Item(Menu.Name + ".ultimate.flash.move-cursor").GetValue<bool>())
+                    Orbwalking.MoveTo(Game.CursorPos, Orbwalker.HoldAreaRadius);
+                }
+                var targets =
+                    Targets.Where(
+                        t =>
+                            t.Distance(Player) < R.Range + SummonerManager.Flash.Range && !t.IsDashing() &&
+                            (t.IsFacing(Player)
+                                ? (t.Distance(Player))
+                                : (Prediction.GetPrediction(t, R.Delay + 0.3f).UnitPosition.Distance(Player.Position))) >
+                            R.Range * 1.025f);
+                foreach (var target in targets)
+                {
+                    var flashPos = Player.Position.Extend(target.Position, SummonerManager.Flash.Range);
+                    var pred =
+                        Prediction.GetPrediction(
+                            new PredictionInput
+                            {
+                                Aoe = true,
+                                Collision = false,
+                                CollisionObjects = new[] { CollisionableObjects.YasuoWall },
+                                From = flashPos,
+                                RangeCheckFrom = flashPos,
+                                Delay = R.Delay + 0.3f,
+                                Range = R.Range,
+                                Speed = R.Speed,
+                                Radius = R.Width,
+                                Type = R.Type,
+                                Unit = target
+                            });
+                    if (pred.Hitchance >= R.GetHitChance("combo"))
                     {
-                        Orbwalking.MoveTo(Game.CursorPos, Orbwalker.HoldAreaRadius);
-                    }
-                    var targets =
-                        Targets.Where(
-                            t =>
-                                t.Distance(Player) < R.Range + SummonerManager.Flash.Range && !t.IsDashing() &&
-                                (t.IsFacing(Player)
-                                    ? (t.Distance(Player))
-                                    : (Prediction.GetPrediction(t, R.Delay + 0.3f)
-                                        .UnitPosition.Distance(Player.Position))) > R.Range * 1.025f);
-                    foreach (var target in targets)
-                    {
-                        var min = Menu.Item(Menu.Name + ".ultimate.flash.min").GetValue<Slider>().Value;
-                        var flashPos = Player.Position.Extend(target.Position, SummonerManager.Flash.Range);
-                        var pred =
-                            Prediction.GetPrediction(
-                                new PredictionInput
-                                {
-                                    Aoe = true,
-                                    Collision = false,
-                                    CollisionObjects = new[] { CollisionableObjects.YasuoWall },
-                                    From = flashPos,
-                                    RangeCheckFrom = flashPos,
-                                    Delay = R.Delay + 0.3f,
-                                    Range = R.Range,
-                                    Speed = R.Speed,
-                                    Radius = R.Width,
-                                    Type = R.Type,
-                                    Unit = target
-                                });
-                        if (pred.Hitchance >= R.GetHitChance("combo"))
+                        R.UpdateSourcePosition(flashPos, flashPos);
+                        var hits = GameObjects.EnemyHeroes.Where(enemy => R.WillHit(enemy, pred.CastPosition)).ToList();
+                        if (_ultimate.Check(UltimateModeType.Flash, hits))
                         {
-                            R.UpdateSourcePosition(flashPos, flashPos);
-                            var hits =
-                                GameObjects.EnemyHeroes.Where(enemy => R.WillHit(enemy, pred.CastPosition)).ToList();
-                            if (UltimateManager.Check(
-                                "combo", min, hits,
-                                hero =>
-                                    CalcComboDamage(
-                                        hero, Menu.Item(Menu.Name + ".combo.q").GetValue<bool>() && Q.IsReady(),
-                                        Menu.Item(Menu.Name + ".combo.w").GetValue<bool>() && W.IsReady(),
-                                        Menu.Item(Menu.Name + ".combo.e").GetValue<bool>() && E.IsReady(), true)))
+                            if (
+                                R.Cast(
+                                    Player.Position.Extend(
+                                        pred.CastPosition, -(Player.Position.Distance(pred.CastPosition) * 2)), true))
                             {
-                                if (
-                                    R.Cast(
-                                        Player.Position.Extend(
-                                            pred.CastPosition, -(Player.Position.Distance(pred.CastPosition) * 2)), true))
-                                {
-                                    Utility.DelayAction.Add(300, () => SummonerManager.Flash.Cast(flashPos));
-                                }
+                                Utility.DelayAction.Add(300, () => SummonerManager.Flash.Cast(flashPos));
                             }
-                            else if (Menu.Item(Menu.Name + ".ultimate.flash.duel").GetValue<bool>())
-                            {
-                                if (UltimateManager.Check(
-                                    "combo", 1, hits,
-                                    hero =>
-                                        CalcComboDamage(
-                                            hero, Menu.Item(Menu.Name + ".combo.q").GetValue<bool>() && Q.IsReady(),
-                                            Menu.Item(Menu.Name + ".combo.w").GetValue<bool>() && W.IsReady(),
-                                            Menu.Item(Menu.Name + ".combo.e").GetValue<bool>() && E.IsReady(), true)))
-                                {
-                                    var cDmg = CalcComboDamage(
-                                        target, Menu.Item(Menu.Name + ".combo.q").GetValue<bool>() && Q.IsReady(),
-                                        Menu.Item(Menu.Name + ".combo.w").GetValue<bool>() && W.IsReady(),
-                                        Menu.Item(Menu.Name + ".combo.e").GetValue<bool>() && E.IsReady(), true);
-                                    if (cDmg - 20 >= target.Health)
-                                    {
-                                        if (
+                        }
+                        else if (_ultimate.ShouldSingle(UltimateModeType.Flash))
+                        {
+                            if (
+                                hits.Where(hit => _ultimate.CheckSingle(UltimateModeType.Flash, hit))
+                                    .Any(
+                                        hit =>
                                             R.Cast(
                                                 Player.Position.Extend(
                                                     pred.CastPosition,
-                                                    -(Player.Position.Distance(pred.CastPosition) * 2)), true))
-                                        {
-                                            Utility.DelayAction.Add(300, () => SummonerManager.Flash.Cast(flashPos));
-                                        }
-                                    }
-                                }
+                                                    -(Player.Position.Distance(pred.CastPosition) * 2)), true)))
+                            {
+                                Utility.DelayAction.Add(300, () => SummonerManager.Flash.Cast(flashPos));
                             }
-                            R.UpdateSourcePosition();
                         }
-                    }
-                }
-
-                if (UltimateManager.Assisted() && R.IsReady())
-                {
-                    if (Menu.Item(Menu.Name + ".ultimate.assisted.move-cursor").GetValue<bool>())
-                    {
-                        Orbwalking.MoveTo(Game.CursorPos, Orbwalker.HoldAreaRadius);
-                    }
-
-                    if (
-                        !RLogic(
-                            R.GetHitChance("combo"),
-                            Menu.Item(Menu.Name + ".ultimate.assisted.min").GetValue<Slider>().Value,
-                            Menu.Item(Menu.Name + ".combo.q").GetValue<bool>() && Q.IsReady(),
-                            Menu.Item(Menu.Name + ".combo.w").GetValue<bool>() && W.IsReady(),
-                            Menu.Item(Menu.Name + ".combo.e").GetValue<bool>() && E.IsReady()))
-                    {
-                        if (Menu.Item(Menu.Name + ".ultimate.assisted.duel").GetValue<bool>())
-                        {
-                            RLogicDuel(
-                                R.GetHitChance("combo"),
-                                Menu.Item(Menu.Name + ".combo.q").GetValue<bool>() && Q.IsReady(),
-                                Menu.Item(Menu.Name + ".combo.w").GetValue<bool>() && W.IsReady(),
-                                Menu.Item(Menu.Name + ".combo.e").GetValue<bool>() && E.IsReady(), false);
-                        }
-                    }
-                }
-
-                if (UltimateManager.Auto() && R.IsReady())
-                {
-                    if (
-                        !RLogic(
-                            R.GetHitChance("combo"),
-                            Menu.Item(Menu.Name + ".ultimate.auto.min").GetValue<Slider>().Value,
-                            Menu.Item(Menu.Name + ".combo.q").GetValue<bool>() && Q.IsReady(),
-                            Menu.Item(Menu.Name + ".combo.w").GetValue<bool>() && W.IsReady(),
-                            Menu.Item(Menu.Name + ".combo.e").GetValue<bool>() && E.IsReady(), "auto"))
-                    {
-                        if (Menu.Item(Menu.Name + ".ultimate.auto.duel").GetValue<bool>())
-                        {
-                            RLogicDuel(
-                                R.GetHitChance("combo"),
-                                Menu.Item(Menu.Name + ".combo.q").GetValue<bool>() && Q.IsReady(),
-                                Menu.Item(Menu.Name + ".combo.w").GetValue<bool>() && W.IsReady(),
-                                Menu.Item(Menu.Name + ".combo.e").GetValue<bool>() && E.IsReady());
-                        }
-                    }
-                }
-
-                if (HeroListManager.Enabled("w-immobile") && W.IsReady())
-                {
-                    var target =
-                        Targets.FirstOrDefault(t => HeroListManager.Check("w-immobile", t) && Utils.IsImmobile(t));
-                    if (target != null)
-                    {
-                        Casting.SkillShot(target, W, W.GetHitChance("harass"));
+                        R.UpdateSourcePosition();
                     }
                 }
             }
-            catch (Exception ex)
+
+            if (_ultimate.IsActive(UltimateModeType.Assisted) && R.IsReady())
             {
-                Global.Logger.AddItem(new LogItem(ex));
+                if (_ultimate.ShouldMove(UltimateModeType.Assisted))
+                {
+                    Orbwalking.MoveTo(Game.CursorPos, Orbwalker.HoldAreaRadius);
+                }
+
+                if (!RLogic(UltimateModeType.Assisted, R.GetHitChance("combo")))
+                {
+                    RLogicSingle(UltimateModeType.Assisted, R.GetHitChance("combo"), false);
+                }
+            }
+
+            if (_ultimate.IsActive(UltimateModeType.Auto) && R.IsReady())
+            {
+                if (!RLogic(UltimateModeType.Auto, R.GetHitChance("combo")))
+                {
+                    RLogicSingle(UltimateModeType.Auto, R.GetHitChance("combo"));
+                }
+            }
+
+            if (HeroListManager.Enabled("w-immobile") && W.IsReady())
+            {
+                var target = Targets.FirstOrDefault(t => HeroListManager.Check("w-immobile", t) && Utils.IsImmobile(t));
+                if (target != null)
+                {
+                    Casting.SkillShot(target, W, W.GetHitChance("harass"));
+                }
             }
         }
 
@@ -485,9 +429,9 @@ namespace SFXCassiopeia.Champions
             try
             {
                 if (sender.IsEnemy && args.DangerLevel == Interrupter2.DangerLevel.High &&
-                    UltimateManager.Interrupt(sender) && sender.IsFacing(Player))
+                    _ultimate.IsActive(UltimateModeType.Interrupt, sender) && sender.IsFacing(Player))
                 {
-                    Casting.SkillShot(sender, R, R.GetHitChance("combo"));
+                    Casting.SkillShot(sender, R, HitChance.High);
                 }
             }
             catch (Exception ex)
@@ -504,7 +448,7 @@ namespace SFXCassiopeia.Champions
                 {
                     return;
                 }
-                if (UltimateManager.Gapcloser(args.Sender))
+                if (_ultimate.IsActive(UltimateModeType.Gapcloser, args.Sender))
                 {
                     if (args.End.Distance(Player.Position) < R.Range)
                     {
@@ -540,7 +484,7 @@ namespace SFXCassiopeia.Champions
             var q = Menu.Item(Menu.Name + ".combo.q").GetValue<bool>() && Q.IsReady();
             var w = Menu.Item(Menu.Name + ".combo.w").GetValue<bool>() && W.IsReady();
             var e = Menu.Item(Menu.Name + ".combo.e").GetValue<bool>() && E.IsReady();
-            var r = UltimateManager.Combo() && R.IsReady();
+            var r = _ultimate.IsActive(UltimateModeType.Combo) && R.IsReady();
 
             if (q)
             {
@@ -556,19 +500,13 @@ namespace SFXCassiopeia.Champions
             }
             if (r)
             {
-                if (
-                    !RLogic(
-                        R.GetHitChance("combo"), Menu.Item(Menu.Name + ".ultimate.combo.min").GetValue<Slider>().Value,
-                        q, w, e))
+                if (!RLogic(UltimateModeType.Combo, R.GetHitChance("combo")))
                 {
-                    if (Menu.Item(Menu.Name + ".ultimate.combo.duel").GetValue<bool>())
-                    {
-                        RLogicDuel(R.GetHitChance("combo"), q, w, e);
-                    }
+                    RLogicSingle(UltimateModeType.Combo, R.GetHitChance("combo"));
                 }
             }
             var target = Targets.FirstOrDefault(t => t.IsValidTarget(R.Range));
-            if (target != null && CalcComboDamage(target, q, w, e, r) > target.Health)
+            if (target != null && _ultimate.GetDamage(target) > target.Health)
             {
                 ItemManager.UseComboItems(target);
                 SummonerManager.UseComboSummoners(target);
@@ -623,20 +561,21 @@ namespace SFXCassiopeia.Champions
             return 0;
         }
 
-        private void RLogicDuel(HitChance hitChance, bool q, bool w, bool e, bool face = true)
+        private void RLogicSingle(UltimateModeType mode, HitChance hitChance, bool face = true)
         {
             try
             {
-                foreach (var t in Targets)
+                if (_ultimate.ShouldSingle(mode))
                 {
-                    if ((!face || t.IsFacing(Player)) && R.CanCast(t))
+                    foreach (var target in
+                        Targets.Where(
+                            t => (!face || t.IsFacing(Player)) && R.CanCast(t) && _ultimate.CheckSingle(mode, t)))
                     {
-                        if (UltimateManager.CheckDuel(t, CalcComboDamage(t, q, w, e, true)))
+                        var pred = R.GetPrediction(target, true);
+                        if (pred.Hitchance >= hitChance)
                         {
-                            if (RLogic(hitChance, 1, q, w, e))
-                            {
-                                break;
-                            }
+                            R.Cast(pred.CastPosition);
+                            break;
                         }
                     }
                 }
@@ -647,20 +586,24 @@ namespace SFXCassiopeia.Champions
             }
         }
 
-        private bool RLogic(HitChance hitChance, int min, bool q, bool w, bool e, string mode = "combo")
+        private bool RLogic(UltimateModeType mode, HitChance hitChance)
         {
             try
             {
-                foreach (var target in Targets.Where(t => R.CanCast(t)))
+                if (_ultimate.IsActive(mode))
                 {
-                    var pred = R.GetPrediction(target, true);
-                    if (pred.Hitchance >= hitChance)
+                    foreach (var target in Targets.Where(t => R.CanCast(t)))
                     {
-                        var hits = GameObjects.EnemyHeroes.Where(enemy => R.WillHit(enemy, pred.CastPosition)).ToList();
-                        if (UltimateManager.Check(mode, min, hits, hero => CalcComboDamage(hero, q, w, e, true)))
+                        var pred = R.GetPrediction(target, true);
+                        if (pred.Hitchance >= hitChance)
                         {
-                            R.Cast(pred.CastPosition);
-                            return true;
+                            var hits =
+                                GameObjects.EnemyHeroes.Where(enemy => R.WillHit(enemy, pred.CastPosition)).ToList();
+                            if (_ultimate.Check(mode, hits))
+                            {
+                                R.Cast(pred.CastPosition);
+                                return true;
+                            }
                         }
                     }
                 }

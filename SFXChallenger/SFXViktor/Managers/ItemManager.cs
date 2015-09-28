@@ -28,9 +28,9 @@ using System.Linq;
 using LeagueSharp;
 using LeagueSharp.Common;
 using SFXViktor.Enumerations;
+using SFXViktor.Helpers;
 using SFXViktor.Library;
 using SFXViktor.Library.Logger;
-using SFXViktor.Wrappers;
 using ItemData = LeagueSharp.Common.Data.ItemData;
 using Orbwalking = SFXViktor.Wrappers.Orbwalking;
 using Utils = SFXViktor.Helpers.Utils;
@@ -118,6 +118,7 @@ namespace SFXViktor.Managers
                     Damage = Damage.DamageItems.Hydra,
                     Range = ItemData.Ravenous_Hydra_Melee_Only.GetItem().Range
                 };
+
                 // Slow + Damage
                 BilgewaterCutlass = new CustomItem
                 {
@@ -160,19 +161,6 @@ namespace SFXViktor.Managers
                     Range = ItemData.Hextech_Gunblade.GetItem().Range
                 };
 
-                // Remove stun + heal
-                MikaelsCrucible = new CustomItem
-                {
-                    Name = "mikaels-crucible",
-                    DisplayName = "Mikael's Crucible",
-                    Item = ItemData.Mikaels_Crucible.GetItem(),
-                    Flags = ItemFlags.Supportive | ItemFlags.Defensive,
-                    CombatFlags = CombatFlags.Melee | CombatFlags.Ranged,
-                    EffectFlags = EffectFlags.RemoveStun | EffectFlags.Heal,
-                    CastType = CastType.Target,
-                    Range = ItemData.Mikaels_Crucible.GetItem().Range
-                };
-
                 // AOE Shield
                 LocketIronSolari = new CustomItem
                 {
@@ -184,6 +172,19 @@ namespace SFXViktor.Managers
                     EffectFlags = EffectFlags.Shield,
                     CastType = CastType.Self,
                     Range = ItemData.Locket_of_the_Iron_Solari.GetItem().Range
+                };
+
+                // Remove stun + heal
+                MikaelsCrucible = new CustomItem
+                {
+                    Name = "mikaels-crucible",
+                    DisplayName = "Mikael's Crucible",
+                    Item = ItemData.Mikaels_Crucible.GetItem(),
+                    Flags = ItemFlags.Supportive,
+                    CombatFlags = CombatFlags.Melee | CombatFlags.Ranged,
+                    EffectFlags = EffectFlags.RemoveStun | EffectFlags.Heal,
+                    CastType = CastType.Target,
+                    Range = ItemData.Mikaels_Crucible.GetItem().Range
                 };
 
                 // Place wards
@@ -262,7 +263,7 @@ namespace SFXViktor.Managers
                                 new Slider(0)));
                         itemMenu.AddItem(
                             new MenuItem(itemMenu.Name + ".target-health-below", "Target Health % <=").SetValue(
-                                new Slider(100)));
+                                new Slider(90)));
                         itemMenu.AddItem(
                             new MenuItem(itemMenu.Name + ".target-health-above", "Target Health % >=").SetValue(
                                 new Slider(0)));
@@ -343,7 +344,7 @@ namespace SFXViktor.Managers
             return 0f;
         }
 
-        public static void UseComboItems(Obj_AI_Hero target)
+        public static void UseComboItems(Obj_AI_Hero target, bool killSteal = false)
         {
             if (_menu == null || !_menu.Item(_menu.Name + ".enabled").GetValue<bool>())
             {
@@ -363,17 +364,19 @@ namespace SFXViktor.Managers
                             ((i.Flags & (_itemFlags)) != 0) &&
                             _menu.Item(_menu.Name + "." + i.Name + ".combo").GetValue<bool>() && i.Item.IsOwned() &&
                             i.Item.IsReady() && distance <= Math.Pow(i.Range, 2) &&
-                            ObjectManager.Player.CountEnemiesInRange(i.Range) >=
-                            _menu.Item(_menu.Name + "." + i.Name + ".min-enemies-range").GetValue<Slider>().Value &&
-                            ObjectManager.Player.HealthPercent <=
-                            _menu.Item(_menu.Name + "." + i.Name + ".player-health-below").GetValue<Slider>().Value &&
-                            ObjectManager.Player.HealthPercent >=
-                            _menu.Item(_menu.Name + "." + i.Name + ".player-health-above").GetValue<Slider>().Value &&
-                            (target == null ||
-                             target.HealthPercent <=
-                             _menu.Item(_menu.Name + "." + i.Name + ".target-health-below").GetValue<Slider>().Value &&
-                             target.HealthPercent >=
-                             _menu.Item(_menu.Name + "." + i.Name + ".target-health-above").GetValue<Slider>().Value)))
+                            (killSteal ||
+                             ObjectManager.Player.CountEnemiesInRange(i.Range) >=
+                             _menu.Item(_menu.Name + "." + i.Name + ".min-enemies-range").GetValue<Slider>().Value &&
+                             ObjectManager.Player.HealthPercent <=
+                             _menu.Item(_menu.Name + "." + i.Name + ".player-health-below").GetValue<Slider>().Value &&
+                             ObjectManager.Player.HealthPercent >=
+                             _menu.Item(_menu.Name + "." + i.Name + ".player-health-above").GetValue<Slider>().Value &&
+                             (target == null ||
+                              target.HealthPercent <=
+                              _menu.Item(_menu.Name + "." + i.Name + ".target-health-below").GetValue<Slider>().Value &&
+                              target.HealthPercent >=
+                              _menu.Item(_menu.Name + "." + i.Name + ".target-health-above").GetValue<Slider>().Value)))
+                    )
                 {
                     switch (item.CastType)
                     {
@@ -497,7 +500,7 @@ namespace SFXViktor.Managers
                         foreach (var enemy in
                             GameObjects.EnemyHeroes.Where(
                                 t =>
-                                    t.IsValidTarget() && !Invulnerable.HasBuff(t) &&
+                                    t.IsValidTarget() && !Invulnerable.Check(t) &&
                                     t.HealthPercent <=
                                     _menu.Item(_menu.Name + "." + lItem.Name + ".target-health-below")
                                         .GetValue<Slider>()

@@ -55,13 +55,20 @@ namespace SFXViktor.SFXTargetSelector
 
         private static void OnCorePreUpdate(EventArgs args)
         {
-            foreach (var item in Items)
+            try
             {
-                if (item.Visible && !item.Hero.IsVisible || !item.Visible && item.Hero.IsVisible)
+                foreach (var item in Items)
                 {
-                    item.Visible = item.Hero.IsVisible;
-                    item.LastVisibleChange = Game.Time;
+                    if (item.Visible && !item.Hero.IsVisible || !item.Visible && item.Hero.IsVisible)
+                    {
+                        item.Visible = item.Hero.IsVisible;
+                        item.LastVisibleChange = Game.Time;
+                    }
                 }
+            }
+            catch (Exception ex)
+            {
+                Global.Logger.AddItem(new LogItem(ex));
             }
         }
 
@@ -70,7 +77,6 @@ namespace SFXViktor.SFXTargetSelector
             public Item(Obj_AI_Hero hero)
             {
                 Hero = hero;
-                LastTargetSwitch = Game.Time;
                 LastVisibleChange = Game.Time;
                 Visible = false;
             }
@@ -79,7 +85,6 @@ namespace SFXViktor.SFXTargetSelector
             public float Weight { get; set; }
             public float LastVisibleChange { get; set; }
             public bool Visible { get; set; }
-            public float LastTargetSwitch { get; set; }
         }
     }
 }
