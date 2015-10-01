@@ -31,6 +31,7 @@ using LeagueSharp.Common;
 using SFXSivir.Interfaces;
 using SFXSivir.Library.Extensions.SharpDX;
 using SFXSivir.Library.Logger;
+using Utils = SFXSivir.Helpers.Utils;
 
 #endregion
 
@@ -176,7 +177,7 @@ namespace SFXSivir.Managers
         {
             try
             {
-                if (Menu == null || _champion.Spells == null || ObjectManager.Player.IsDead)
+                if (Menu == null || _champion.Spells == null || !Utils.ShouldDraw())
                 {
                     return;
                 }

@@ -32,7 +32,7 @@ namespace SFXAutoLantern.Features.Others
     {
         public override string Name
         {
-            get { return "Others"; }
+            get { return "App"; }
         }
     }
 }

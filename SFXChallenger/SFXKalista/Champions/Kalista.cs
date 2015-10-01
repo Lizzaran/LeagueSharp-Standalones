@@ -29,6 +29,7 @@ using System.Linq;
 using LeagueSharp;
 using LeagueSharp.Common;
 using SFXKalista.Abstracts;
+using SFXKalista.Args;
 using SFXKalista.Enumerations;
 using SFXKalista.Helpers;
 using SFXKalista.Library;
@@ -85,15 +86,29 @@ namespace SFXKalista.Champions
 
             var blitzMenu = ultimateMenu.AddSubMenu(new Menu("Blitzcrank", ultimateMenu.Name + ".blitzcrank"));
             HeroListManager.AddToMenu(
-                blitzMenu.AddSubMenu(new Menu("Blacklist", blitzMenu.Name + ".blacklist")), "blitzcrank", false, false,
-                true, false);
-            blitzMenu.AddItem(new MenuItem(blitzMenu.Name + ".r", "Use R").SetValue(true));
+                blitzMenu.AddSubMenu(new Menu("Blacklist", blitzMenu.Name + ".blacklist")),
+                new HeroListManagerArgs("blitzcrank")
+                {
+                    IsWhitelist = false,
+                    Allies = false,
+                    Enemies = true,
+                    DefaultValue = false,
+                    EnabledButton = false
+                });
+            blitzMenu.AddItem(new MenuItem(blitzMenu.Name + ".r", "Enabled").SetValue(true));
 
             var tahmMenu = ultimateMenu.AddSubMenu(new Menu("Tahm Kench", ultimateMenu.Name + ".tahm-kench"));
             HeroListManager.AddToMenu(
-                tahmMenu.AddSubMenu(new Menu("Blacklist", tahmMenu.Name + ".blacklist")), "tahm-kench", false, false,
-                true, false);
-            tahmMenu.AddItem(new MenuItem(tahmMenu.Name + ".r", "Use R").SetValue(true));
+                tahmMenu.AddSubMenu(new Menu("Blacklist", tahmMenu.Name + ".blacklist")),
+                new HeroListManagerArgs("q-gapcloser")
+                {
+                    IsWhitelist = false,
+                    Allies = false,
+                    Enemies = true,
+                    DefaultValue = false,
+                    EnabledButton = false
+                });
+            tahmMenu.AddItem(new MenuItem(tahmMenu.Name + ".r", "Enabled").SetValue(true));
 
             ultimateMenu.AddItem(new MenuItem(ultimateMenu.Name + ".save", "Save Soulbound").SetValue(true));
 
@@ -101,7 +116,14 @@ namespace SFXKalista.Champions
             HitchanceManager.AddToMenu(
                 comboMenu.AddSubMenu(new Menu("Hitchance", comboMenu.Name + ".hitchance")), "combo",
                 new Dictionary<string, HitChance> { { "Q", HitChance.VeryHigh } });
-            ManaManager.AddToMenu(comboMenu, "combo-q", ManaCheckType.Minimum, ManaValueType.Percent, "Q", 10);
+            ResourceManager.AddToMenu(
+                comboMenu,
+                new ResourceManagerArgs(
+                    "combo-q", ResourceType.Mana, ResourceValueType.Percent, ResourceCheckType.Minimum)
+                {
+                    Prefix = "Q",
+                    DefaultValue = 10
+                });
             comboMenu.AddItem(new MenuItem(comboMenu.Name + ".q", "Use Q").SetValue(true));
             comboMenu.AddItem(new MenuItem(comboMenu.Name + ".e", "Use E").SetValue(true));
             comboMenu.AddItem(new MenuItem(comboMenu.Name + ".e-min", "E Fleeing Min.").SetValue(new Slider(8, 1, 20)));
@@ -111,37 +133,71 @@ namespace SFXKalista.Champions
             HitchanceManager.AddToMenu(
                 harassMenu.AddSubMenu(new Menu("Hitchance", harassMenu.Name + ".hitchance")), "harass",
                 new Dictionary<string, HitChance> { { "Q", HitChance.High } });
-            ManaManager.AddToMenu(harassMenu, "harass-q", ManaCheckType.Minimum, ManaValueType.Percent, "Q");
-            ManaManager.AddToMenu(harassMenu, "harass-e", ManaCheckType.Minimum, ManaValueType.Percent, "E");
+            ResourceManager.AddToMenu(
+                harassMenu,
+                new ResourceManagerArgs(
+                    "harass-q", ResourceType.Mana, ResourceValueType.Percent, ResourceCheckType.Minimum)
+                {
+                    Prefix = "Q",
+                    DefaultValue = 30
+                });
+            ResourceManager.AddToMenu(
+                harassMenu,
+                new ResourceManagerArgs(
+                    "harass-e", ResourceType.Mana, ResourceValueType.Percent, ResourceCheckType.Minimum)
+                {
+                    Prefix = "E",
+                    DefaultValue = 30
+                });
             harassMenu.AddItem(new MenuItem(harassMenu.Name + ".q", "Use Q").SetValue(true));
             harassMenu.AddItem(new MenuItem(harassMenu.Name + ".e", "Use E").SetValue(true));
             harassMenu.AddItem(new MenuItem(harassMenu.Name + ".e-min", "E Min.").SetValue(new Slider(4, 1, 20)));
 
             var laneclearMenu = Menu.AddSubMenu(new Menu("Lane Clear", Menu.Name + ".lane-clear"));
-            ManaManager.AddToMenu(laneclearMenu, "lane-clear", ManaCheckType.Minimum, ManaValueType.Percent);
-            laneclearMenu.AddItem(new MenuItem(laneclearMenu.Name + ".q", "Use Q").SetValue(false));
+            ResourceManager.AddToMenu(
+                laneclearMenu,
+                new ResourceManagerArgs(
+                    "lane-clear", ResourceType.Mana, ResourceValueType.Percent, ResourceCheckType.Minimum)
+                {
+                    Advanced = true,
+                    MaxValue = 101,
+                    LevelRanges = new SortedList<int, int> { { 1, 6 }, { 6, 12 }, { 12, 18 } },
+                    DefaultValues = new List<int> { 50, 30, 30 }
+                });
+            laneclearMenu.AddItem(new MenuItem(laneclearMenu.Name + ".q", "Use Q").SetValue(true));
             laneclearMenu.AddItem(
-                new MenuItem(laneclearMenu.Name + ".q-min-1", "Q Min.<= 4").SetValue(new Slider(2, 1, 5)));
-            laneclearMenu.AddItem(
-                new MenuItem(laneclearMenu.Name + ".q-min-2", "Q Min.<= 7").SetValue(new Slider(3, 1, 5)));
-            laneclearMenu.AddItem(
-                new MenuItem(laneclearMenu.Name + ".q-min-3", "Q Min.>= 10").SetValue(new Slider(5, 1, 5)));
+                new MenuItem(laneclearMenu.Name + ".q-min", "Q Min. Hits").SetValue(new Slider(2, 1, 5)));
             laneclearMenu.AddItem(new MenuItem(laneclearMenu.Name + ".e", "Use E").SetValue(true));
 
             var lasthitMenu = Menu.AddSubMenu(new Menu("Last Hit", Menu.Name + ".lasthit"));
-            lasthitMenu.AddItem(new MenuItem(lasthitMenu.Name + ".e-jungle", "E Jungle").SetValue(true));
-            lasthitMenu.AddItem(new MenuItem(lasthitMenu.Name + ".e-big", "E Dragon/Baron").SetValue(true));
-            lasthitMenu.AddItem(new MenuItem(lasthitMenu.Name + ".separator", string.Empty));
-            ManaManager.AddToMenu(lasthitMenu, "lasthit", ManaCheckType.Minimum, ManaValueType.Percent);
+            ResourceManager.AddToMenu(
+                lasthitMenu,
+                new ResourceManagerArgs(
+                    "lasthit", ResourceType.Mana, ResourceValueType.Percent, ResourceCheckType.Minimum)
+                {
+                    Advanced = true,
+                    MaxValue = 101,
+                    LevelRanges = new SortedList<int, int> { { 1, 6 }, { 6, 12 }, { 12, 18 } },
+                    DefaultValues = new List<int> { 50, 30, 30 }
+                });
             lasthitMenu.AddItem(new MenuItem(lasthitMenu.Name + ".e-siege", "E Siege Minion").SetValue(true));
             lasthitMenu.AddItem(new MenuItem(lasthitMenu.Name + ".e-unkillable", "E Unkillable").SetValue(true));
             lasthitMenu.AddItem(new MenuItem(lasthitMenu.Name + ".e-turret", "E Under Turret").SetValue(true));
+            lasthitMenu.AddItem(new MenuItem(lasthitMenu.Name + ".separator", string.Empty));
+            lasthitMenu.AddItem(new MenuItem(lasthitMenu.Name + ".e-jungle", "E Jungle").SetValue(true));
+            lasthitMenu.AddItem(new MenuItem(lasthitMenu.Name + ".e-big", "E Dragon/Baron").SetValue(true));
 
             var killstealMenu = Menu.AddSubMenu(new Menu("Killsteal", Menu.Name + ".killsteal"));
             killstealMenu.AddItem(new MenuItem(killstealMenu.Name + ".e", "Use E").SetValue(true));
 
             var miscMenu = Menu.AddSubMenu(new Menu("Misc", Menu.Name + ".miscellaneous"));
-            ManaManager.AddToMenu(miscMenu, "misc", ManaCheckType.Minimum, ManaValueType.Percent, "E");
+            ResourceManager.AddToMenu(
+                miscMenu,
+                new ResourceManagerArgs("misc", ResourceType.Mana, ResourceValueType.Percent, ResourceCheckType.Minimum)
+                {
+                    Prefix = "E",
+                    DefaultValue = 30
+                });
             miscMenu.AddItem(new MenuItem(miscMenu.Name + ".e-reset", "E Harass Reset").SetValue(true));
             miscMenu.AddItem(
                 new MenuItem(miscMenu.Name + ".w-baron", "Hotkey W Baron").SetValue(new KeyBind('J', KeyBindType.Press)));
@@ -253,7 +309,7 @@ namespace SFXKalista.Champions
             try
             {
                 if (Menu.Item(Menu.Name + ".lasthit.e-unkillable").GetValue<bool>() && E.IsReady() &&
-                    ManaManager.Check("lasthit"))
+                    ResourceManager.Check("lasthit"))
                 {
                     var target = unit as Obj_AI_Base;
                     if (target != null && Rend.IsKillable(target, true))
@@ -287,7 +343,7 @@ namespace SFXKalista.Champions
 
                 if (E.IsReady())
                 {
-                    if (ManaManager.Check("lasthit"))
+                    if (ResourceManager.Check("lasthit"))
                     {
                         if (eSiege)
                         {
@@ -347,7 +403,7 @@ namespace SFXKalista.Champions
                     }
                 }
 
-                if (eReset && E.IsReady() && ManaManager.Check("misc") &&
+                if (eReset && E.IsReady() && ResourceManager.Check("misc") &&
                     GameObjects.EnemyHeroes.Any(e => Rend.HasBuff(e) && e.IsValidTarget(E.Range)))
                 {
                     if (minions.Any())
@@ -449,7 +505,8 @@ namespace SFXKalista.Champions
 
         protected override void Combo()
         {
-            var useQ = Menu.Item(Menu.Name + ".combo.q").GetValue<bool>() && Q.IsReady() && ManaManager.Check("combo-q");
+            var useQ = Menu.Item(Menu.Name + ".combo.q").GetValue<bool>() && Q.IsReady() &&
+                       ResourceManager.Check("combo-q");
             var useE = Menu.Item(Menu.Name + ".combo.e").GetValue<bool>() && E.IsReady();
 
             if (useQ)
@@ -529,11 +586,11 @@ namespace SFXKalista.Champions
 
         protected override void Harass()
         {
-            if (Menu.Item(Menu.Name + ".harass.q").GetValue<bool>() && Q.IsReady() && ManaManager.Check("harass-q"))
+            if (Menu.Item(Menu.Name + ".harass.q").GetValue<bool>() && Q.IsReady() && ResourceManager.Check("harass-q"))
             {
                 Casting.SkillShot(Q, Q.GetHitChance("harass"));
             }
-            if (Menu.Item(Menu.Name + ".harass.e").GetValue<bool>() && E.IsReady() && ManaManager.Check("harass-e"))
+            if (Menu.Item(Menu.Name + ".harass.e").GetValue<bool>() && E.IsReady() && ResourceManager.Check("harass-e"))
             {
                 foreach (var enemy in GameObjects.EnemyHeroes.Where(e => E.IsInRange(e)))
                 {
@@ -577,7 +634,7 @@ namespace SFXKalista.Champions
 
         protected override void LaneClear()
         {
-            if (!ManaManager.Check("lane-clear"))
+            if (!ResourceManager.Check("lane-clear"))
             {
                 return;
             }
@@ -590,28 +647,13 @@ namespace SFXKalista.Champions
                 return;
             }
 
-            var minQ1 = Menu.Item(Menu.Name + ".lane-clear.q-min-1").GetValue<Slider>().Value;
-            var minQ2 = Menu.Item(Menu.Name + ".lane-clear.q-min-2").GetValue<Slider>().Value;
-            var minQ3 = Menu.Item(Menu.Name + ".lane-clear.q-min-3").GetValue<Slider>().Value;
             var minE = ItemData.Runaans_Hurricane_Ranged_Only.GetItem().IsOwned(Player) ? 3 : 2;
-            var minQ = 0;
+            var minQ = Menu.Item(Menu.Name + ".lane-clear.q-min").GetValue<Slider>().Value;
             var minions = MinionManager.GetMinions(
                 Q.Range, MinionTypes.All, MinionTeam.NotAlly, MinionOrderTypes.MaxHealth);
             if (minions.Count == 0)
             {
                 return;
-            }
-            if (minions.Count >= 10)
-            {
-                minQ = minQ3;
-            }
-            else if (minions.Count <= 7)
-            {
-                minQ = minQ2;
-            }
-            else if (minions.Count <= 4)
-            {
-                minQ = minQ1;
             }
             if (useQ && minions.Count >= minQ && !Player.IsWindingUp && !Player.IsDashing())
             {

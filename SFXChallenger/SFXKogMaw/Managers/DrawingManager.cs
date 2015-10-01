@@ -31,6 +31,7 @@ using LeagueSharp.Common;
 using SFXKogMaw.Interfaces;
 using SFXKogMaw.Library.Extensions.SharpDX;
 using SFXKogMaw.Library.Logger;
+using Utils = SFXKogMaw.Helpers.Utils;
 
 #endregion
 
@@ -176,7 +177,7 @@ namespace SFXKogMaw.Managers
         {
             try
             {
-                if (Menu == null || _champion.Spells == null || ObjectManager.Player.IsDead)
+                if (Menu == null || _champion.Spells == null || !Utils.ShouldDraw())
                 {
                     return;
                 }

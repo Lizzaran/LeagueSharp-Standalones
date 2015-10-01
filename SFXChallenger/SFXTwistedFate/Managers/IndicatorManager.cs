@@ -33,6 +33,7 @@ using SharpDX;
 using SharpDX.Direct3D9;
 using Color = System.Drawing.Color;
 using Spell = SFXTwistedFate.Wrappers.Spell;
+using Utils = SFXTwistedFate.Helpers.Utils;
 
 #endregion
 
@@ -125,7 +126,7 @@ namespace SFXTwistedFate.Managers
         {
             try
             {
-                if (Drawing.Direct3DDevice == null || Drawing.Direct3DDevice.IsDisposed)
+                if (Drawing.Direct3DDevice == null || Drawing.Direct3DDevice.IsDisposed || !Utils.ShouldDraw())
                 {
                     return;
                 }

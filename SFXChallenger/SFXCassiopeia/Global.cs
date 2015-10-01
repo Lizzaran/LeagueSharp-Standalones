@@ -33,6 +33,7 @@ namespace SFXCassiopeia
 {
     internal class Global
     {
+        public static string Prefix = "SFX";
         public static string Name = "SFXCassiopeia";
         public static ILogger Logger;
         public static string LogDir = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, Name + " - Logs");

@@ -34,7 +34,7 @@ using Orbwalking = SFXKalista.Wrappers.Orbwalking;
 
 namespace SFXKalista.Helpers
 {
-    internal static class Invulnerable
+    public class Invulnerable
     {
         public static readonly HashSet<Item> Items = new HashSet<Item>
         {

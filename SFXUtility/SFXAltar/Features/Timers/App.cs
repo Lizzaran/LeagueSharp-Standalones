@@ -32,7 +32,7 @@ namespace SFXAltar.Features.Timers
     {
         public override string Name
         {
-            get { return "Timers"; }
+            get { return "App"; }
         }
     }
 }

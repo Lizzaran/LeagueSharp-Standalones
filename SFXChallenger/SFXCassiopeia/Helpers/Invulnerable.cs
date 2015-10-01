@@ -34,7 +34,7 @@ using Orbwalking = SFXCassiopeia.Wrappers.Orbwalking;
 
 namespace SFXCassiopeia.Helpers
 {
-    internal static class Invulnerable
+    public class Invulnerable
     {
         public static readonly HashSet<Item> Items = new HashSet<Item>
         {

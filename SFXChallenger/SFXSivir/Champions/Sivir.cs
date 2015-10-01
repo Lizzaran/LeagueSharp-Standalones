@@ -28,6 +28,7 @@ using System.Linq;
 using LeagueSharp;
 using LeagueSharp.Common;
 using SFXSivir.Abstracts;
+using SFXSivir.Args;
 using SFXSivir.Enumerations;
 using SFXSivir.Helpers;
 using SFXSivir.Library;
@@ -76,13 +77,39 @@ namespace SFXSivir.Champions
             HitchanceManager.AddToMenu(
                 harassMenu.AddSubMenu(new Menu("Hitchance", harassMenu.Name + ".hitchance")), "harass",
                 new Dictionary<string, HitChance> { { "Q", HitChance.High } });
-            ManaManager.AddToMenu(harassMenu, "harass", ManaCheckType.Minimum, ManaValueType.Percent);
+            ResourceManager.AddToMenu(
+                harassMenu,
+                new ResourceManagerArgs(
+                    "harass", ResourceType.Mana, ResourceValueType.Percent, ResourceCheckType.Minimum)
+                {
+                    DefaultValue = 30
+                });
             harassMenu.AddItem(new MenuItem(harassMenu.Name + ".q", "Use Q").SetValue(true));
             harassMenu.AddItem(new MenuItem(harassMenu.Name + ".w", "Use W").SetValue(true));
 
             var laneclearMenu = Menu.AddSubMenu(new Menu("Lane Clear", Menu.Name + ".lane-clear"));
-            ManaManager.AddToMenu(laneclearMenu, "lane-clear-q", ManaCheckType.Minimum, ManaValueType.Percent, "Q", 50);
-            ManaManager.AddToMenu(laneclearMenu, "lane-clear-w", ManaCheckType.Minimum, ManaValueType.Percent, "W", 40);
+            ResourceManager.AddToMenu(
+                laneclearMenu,
+                new ResourceManagerArgs(
+                    "lane-clear-q", ResourceType.Mana, ResourceValueType.Percent, ResourceCheckType.Minimum)
+                {
+                    Prefix = "Q",
+                    Advanced = true,
+                    MaxValue = 101,
+                    LevelRanges = new SortedList<int, int> { { 1, 6 }, { 6, 12 }, { 12, 18 } },
+                    DefaultValues = new List<int> { 70, 50, 50 }
+                });
+            ResourceManager.AddToMenu(
+                laneclearMenu,
+                new ResourceManagerArgs(
+                    "lane-clear-w", ResourceType.Mana, ResourceValueType.Percent, ResourceCheckType.Minimum)
+                {
+                    Prefix = "W",
+                    Advanced = true,
+                    MaxValue = 101,
+                    LevelRanges = new SortedList<int, int> { { 1, 6 }, { 6, 12 }, { 12, 18 } },
+                    DefaultValues = new List<int> { 60, 40, 40 }
+                });
             laneclearMenu.AddItem(new MenuItem(laneclearMenu.Name + ".q", "Use Q").SetValue(true));
             laneclearMenu.AddItem(new MenuItem(laneclearMenu.Name + ".q-min", "Q Min.").SetValue(new Slider(4, 1, 5)));
             laneclearMenu.AddItem(new MenuItem(laneclearMenu.Name + ".w", "Use W").SetValue(true));
@@ -97,9 +124,16 @@ namespace SFXSivir.Champions
             shieldMenu.AddItem(new MenuItem(shieldMenu.Name + ".enabled", "Enabled").SetValue(true));
 
             var miscMenu = Menu.AddSubMenu(new Menu("Misc", Menu.Name + ".miscellaneous"));
+
             HeroListManager.AddToMenu(
-                miscMenu.AddSubMenu(new Menu("Q Immobile", miscMenu.Name + "q-immobile")), "q-immobile", false, false,
-                true, false);
+                miscMenu.AddSubMenu(new Menu("Q Immobile", miscMenu.Name + "q-immobile")),
+                new HeroListManagerArgs("q-immobile")
+                {
+                    IsWhitelist = false,
+                    Allies = false,
+                    Enemies = true,
+                    DefaultValue = false
+                });
 
             IndicatorManager.AddToMenu(DrawingManager.Menu, true);
             IndicatorManager.Add(Q);
@@ -209,7 +243,7 @@ namespace SFXSivir.Champions
                             laneclear = true;
                             break;
                     }
-                    if (useW && (!laneclear || ManaManager.Check("lane-clear-w")))
+                    if (useW && (!laneclear || ResourceManager.Check("lane-clear-w")))
                     {
                         var range = W.Range + Player.BoundingRadius * 2f;
                         var targets = laneclear
@@ -249,7 +283,7 @@ namespace SFXSivir.Champions
 
         protected override void Harass()
         {
-            if (!ManaManager.Check("harass"))
+            if (!ResourceManager.Check("harass"))
             {
                 return;
             }
@@ -264,7 +298,7 @@ namespace SFXSivir.Champions
 
         protected override void LaneClear()
         {
-            if (!ManaManager.Check("lane-clear-q"))
+            if (!ResourceManager.Check("lane-clear-q"))
             {
                 return;
             }

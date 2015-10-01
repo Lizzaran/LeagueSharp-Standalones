@@ -31,6 +31,7 @@ using LeagueSharp.Common;
 using SFXOrianna.Interfaces;
 using SFXOrianna.Library.Extensions.SharpDX;
 using SFXOrianna.Library.Logger;
+using Utils = SFXOrianna.Helpers.Utils;
 
 #endregion
 
@@ -176,7 +177,7 @@ namespace SFXOrianna.Managers
         {
             try
             {
-                if (Menu == null || _champion.Spells == null || ObjectManager.Player.IsDead)
+                if (Menu == null || _champion.Spells == null || !Utils.ShouldDraw())
                 {
                     return;
                 }

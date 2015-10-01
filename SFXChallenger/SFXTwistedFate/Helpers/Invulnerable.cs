@@ -34,7 +34,7 @@ using Orbwalking = SFXTwistedFate.Wrappers.Orbwalking;
 
 namespace SFXTwistedFate.Helpers
 {
-    internal static class Invulnerable
+    public class Invulnerable
     {
         public static readonly HashSet<Item> Items = new HashSet<Item>
         {

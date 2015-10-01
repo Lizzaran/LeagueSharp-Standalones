@@ -31,6 +31,7 @@ using LeagueSharp.Common;
 using SFXVladimir.Interfaces;
 using SFXVladimir.Library.Extensions.SharpDX;
 using SFXVladimir.Library.Logger;
+using Utils = SFXVladimir.Helpers.Utils;
 
 #endregion
 
@@ -176,7 +177,7 @@ namespace SFXVladimir.Managers
         {
             try
             {
-                if (Menu == null || _champion.Spells == null || ObjectManager.Player.IsDead)
+                if (Menu == null || _champion.Spells == null || !Utils.ShouldDraw())
                 {
                     return;
                 }

@@ -31,6 +31,7 @@ using LeagueSharp.Common;
 using SFXKalista.Interfaces;
 using SFXKalista.Library.Extensions.SharpDX;
 using SFXKalista.Library.Logger;
+using Utils = SFXKalista.Helpers.Utils;
 
 #endregion
 
@@ -176,7 +177,7 @@ namespace SFXKalista.Managers
         {
             try
             {
-                if (Menu == null || _champion.Spells == null || ObjectManager.Player.IsDead)
+                if (Menu == null || _champion.Spells == null || !Utils.ShouldDraw())
                 {
                     return;
                 }

@@ -32,7 +32,7 @@ namespace SFXTeleport.Features.Detectors
     {
         public override string Name
         {
-            get { return "Detectors"; }
+            get { return "App"; }
         }
     }
 }

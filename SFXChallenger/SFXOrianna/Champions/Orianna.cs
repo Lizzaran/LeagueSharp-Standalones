@@ -29,6 +29,7 @@ using System.Linq;
 using LeagueSharp;
 using LeagueSharp.Common;
 using SFXOrianna.Abstracts;
+using SFXOrianna.Args;
 using SFXOrianna.Enumerations;
 using SFXOrianna.Events;
 using SFXOrianna.Helpers;
@@ -36,6 +37,7 @@ using SFXOrianna.Library;
 using SFXOrianna.Library.Extensions.NET;
 using SFXOrianna.Library.Logger;
 using SFXOrianna.Managers;
+using SFXOrianna.SFXTargetSelector;
 using SharpDX;
 using Color = System.Drawing.Color;
 using DamageType = SFXOrianna.Enumerations.DamageType;
@@ -72,15 +74,6 @@ namespace SFXOrianna.Champions
 
         protected override void OnLoad()
         {
-            Interrupter2.OnInterruptableTarget += OnInterruptableTarget;
-            InitiatorManager.OnAllyInitiator += OnAllyInitiator;
-            Spellbook.OnCastSpell += OnSpellbookCastSpell;
-            Ball.OnPositionChange += OnBallPositionChange;
-            AntiGapcloser.OnEnemyGapcloser += OnEnemyGapcloser;
-            CustomEvents.Unit.OnDash += OnUnitDash;
-            Drawing.OnDraw += OnDrawingDraw;
-            Obj_AI_Base.OnProcessSpellCast += OnObjAiBaseProcessSpellCast;
-
             _ultimate = new UltimateManager
             {
                 Combo = true,
@@ -88,6 +81,7 @@ namespace SFXOrianna.Champions
                 Auto = true,
                 Flash = true,
                 Required = true,
+                Force = true,
                 Gapcloser = false,
                 GapcloserDelay = false,
                 Interrupt = true,
@@ -99,6 +93,15 @@ namespace SFXOrianna.Champions
                             Menu.Item(Menu.Name + ".combo.w").GetValue<bool>() && W.IsReady(),
                             Menu.Item(Menu.Name + ".combo.e").GetValue<bool>() && E.IsReady(), true)
             };
+
+            Interrupter2.OnInterruptableTarget += OnInterruptableTarget;
+            InitiatorManager.OnAllyInitiator += OnAllyInitiator;
+            Spellbook.OnCastSpell += OnSpellbookCastSpell;
+            Ball.OnPositionChange += OnBallPositionChange;
+            AntiGapcloser.OnEnemyGapcloser += OnEnemyGapcloser;
+            CustomEvents.Unit.OnDash += OnUnitDash;
+            Drawing.OnDraw += OnDrawingDraw;
+            Obj_AI_Base.OnProcessSpellCast += OnObjAiBaseProcessSpellCast;
         }
 
         protected override void AddToMenu()
@@ -125,14 +128,37 @@ namespace SFXOrianna.Champions
             HitchanceManager.AddToMenu(
                 harassMenu.AddSubMenu(new Menu("Hitchance", harassMenu.Name + ".hitchance")), "harass",
                 new Dictionary<string, HitChance> { { "Q", HitChance.VeryHigh } });
-            ManaManager.AddToMenu(harassMenu, "harass-q", ManaCheckType.Minimum, ManaValueType.Percent, "Q");
-            ManaManager.AddToMenu(harassMenu, "harass-w", ManaCheckType.Minimum, ManaValueType.Percent, "W", 50);
+            ResourceManager.AddToMenu(
+                harassMenu,
+                new ResourceManagerArgs(
+                    "harass-q", ResourceType.Mana, ResourceValueType.Percent, ResourceCheckType.Minimum)
+                {
+                    Prefix = "Q",
+                    DefaultValue = 30
+                });
+            ResourceManager.AddToMenu(
+                harassMenu,
+                new ResourceManagerArgs(
+                    "harass-w", ResourceType.Mana, ResourceValueType.Percent, ResourceCheckType.Minimum)
+                {
+                    Prefix = "W",
+                    DefaultValue = 50
+                });
             harassMenu.AddItem(new MenuItem(harassMenu.Name + ".q", "Use Q").SetValue(true));
             harassMenu.AddItem(new MenuItem(harassMenu.Name + ".w", "Use W").SetValue(true));
             harassMenu.AddItem(new MenuItem(harassMenu.Name + ".e", "Use E").SetValue(false));
 
             var laneclearMenu = Menu.AddSubMenu(new Menu("Lane Clear", Menu.Name + ".lane-clear"));
-            ManaManager.AddToMenu(laneclearMenu, "lane-clear", ManaCheckType.Minimum, ManaValueType.Percent, null, 25);
+            ResourceManager.AddToMenu(
+                laneclearMenu,
+                new ResourceManagerArgs(
+                    "lane-clear", ResourceType.Mana, ResourceValueType.Percent, ResourceCheckType.Minimum)
+                {
+                    Advanced = true,
+                    MaxValue = 101,
+                    LevelRanges = new SortedList<int, int> { { 1, 6 }, { 6, 12 }, { 12, 18 } },
+                    DefaultValues = new List<int> { 45, 25, 25 }
+                });
             laneclearMenu.AddItem(new MenuItem(laneclearMenu.Name + ".q", "Use Q").SetValue(true));
             laneclearMenu.AddItem(new MenuItem(laneclearMenu.Name + ".w", "Use W").SetValue(true));
 
@@ -147,8 +173,14 @@ namespace SFXOrianna.Champions
             InitiatorManager.AddToMenu(initiatorWhitelistMenu, true, false);
             initiatorMenu.AddItem(new MenuItem(initiatorMenu.Name + ".use-e", "Use E").SetValue(true));
 
-            var shieldMenu = Menu.AddSubMenu(new Menu("Shield", Menu.Name + ".shield"));
-            ManaManager.AddToMenu(shieldMenu, "shield", ManaCheckType.Minimum, ManaValueType.Percent);
+            var shieldMenu = Menu.AddSubMenu(new Menu("Self Shield", Menu.Name + ".shield"));
+            ResourceManager.AddToMenu(
+                shieldMenu,
+                new ResourceManagerArgs(
+                    "shield", ResourceType.Mana, ResourceValueType.Percent, ResourceCheckType.Minimum)
+                {
+                    DefaultValue = 30
+                });
             shieldMenu.AddItem(
                 new MenuItem(shieldMenu.Name + ".min-health", "Min. Health %").SetValue(new Slider(90, 1)));
             shieldMenu.AddItem(
@@ -157,10 +189,30 @@ namespace SFXOrianna.Champions
 
             var miscMenu = Menu.AddSubMenu(new Menu("Misc", Menu.Name + ".miscellaneous"));
             HeroListManager.AddToMenu(
-                miscMenu.AddSubMenu(new Menu("Q Gapcloser", miscMenu.Name + "q-gapcloser")), "q-gapcloser", false, false,
-                true, false);
-            ManaManager.AddToMenu(miscMenu, "e-self", ManaCheckType.Minimum, ManaValueType.Percent, "E Self", 10);
-            ManaManager.AddToMenu(miscMenu, "e-allies", ManaCheckType.Minimum, ManaValueType.Percent, "E Allies", 20);
+                miscMenu.AddSubMenu(new Menu("Q Gapcloser", miscMenu.Name + "q-gapcloser")),
+                new HeroListManagerArgs("q-gapcloser")
+                {
+                    IsWhitelist = false,
+                    Allies = false,
+                    Enemies = true,
+                    DefaultValue = false
+                });
+            ResourceManager.AddToMenu(
+                miscMenu,
+                new ResourceManagerArgs(
+                    "e-self", ResourceType.Mana, ResourceValueType.Percent, ResourceCheckType.Minimum)
+                {
+                    Prefix = "E Self",
+                    DefaultValue = 10
+                });
+            ResourceManager.AddToMenu(
+                miscMenu,
+                new ResourceManagerArgs(
+                    "e-allies", ResourceType.Mana, ResourceValueType.Percent, ResourceCheckType.Minimum)
+                {
+                    Prefix = "E Allies",
+                    DefaultValue = 20
+                });
             miscMenu.AddItem(new MenuItem(miscMenu.Name + ".e-allies", "E Allies").SetValue(true));
             miscMenu.AddItem(new MenuItem(miscMenu.Name + ".block-r", "Block Missing R").SetValue(true));
 
@@ -173,9 +225,13 @@ namespace SFXOrianna.Champions
             IndicatorManager.Add(R);
             IndicatorManager.Finale();
 
+            Weights.AddItem(
+                new Weights.Item(
+                    "short-distance-ball", "Distance to Ball", 5, true, hero => hero.Distance(Ball.Position)));
+
             _ballPositionThickness = DrawingManager.Add("Ball Thickness", new Slider(7, 1, 10));
             _ballPositionRadius = DrawingManager.Add("Ball Radius", new Slider(95, 0, 300));
-            _ballPositionCircle = DrawingManager.Add("Ball Position", new Circle(false, Color.Yellow));
+            _ballPositionCircle = DrawingManager.Add("Ball Position", new Circle(true, Color.Yellow));
 
             R.Width = Menu.Item(ultimateMenu.Name + ".width").GetValue<Slider>().Value;
         }
@@ -183,9 +239,9 @@ namespace SFXOrianna.Champions
         private void CastE(Obj_AI_Hero target)
         {
             if (target != null &&
-                (target.IsMe && ManaManager.Check("e-self") ||
+                (target.IsMe && ResourceManager.Check("e-self") ||
                  !target.IsMe && Menu.Item(Menu.Name + ".miscellaneous.e-allies").GetValue<bool>() &&
-                 ManaManager.Check("e-allies")))
+                 ResourceManager.Check("e-allies")))
             {
                 E.CastOnUnit(target);
             }
@@ -216,7 +272,7 @@ namespace SFXOrianna.Champions
                             if (args.Target != null && args.Target.NetworkId == Player.NetworkId &&
                                 slot == hero.GetSpellSlot("SummonerDot"))
                             {
-                                if (E.IsReady() && ManaManager.Check("shield"))
+                                if (E.IsReady() && ResourceManager.Check("shield"))
                                 {
                                     E.CastOnUnit(Player);
                                 }
@@ -248,12 +304,15 @@ namespace SFXOrianna.Champions
         {
             try
             {
+                if (!Utils.ShouldDraw())
+                {
+                    return;
+                }
                 var circle = _ballPositionCircle.GetValue<Circle>();
                 if (circle.Active)
                 {
                     Render.Circle.DrawCircle(
-                        (Ball.Hero != null ? Ball.Hero.Position : Ball.Position),
-                        _ballPositionRadius.GetValue<Slider>().Value, circle.Color,
+                        Ball.Position, _ballPositionRadius.GetValue<Slider>().Value, circle.Color,
                         _ballPositionThickness.GetValue<Slider>().Value, true);
                 }
             }
@@ -383,7 +442,7 @@ namespace SFXOrianna.Champions
         protected override void SetupSpells()
         {
             Q = new Spell(SpellSlot.Q, 825f, DamageType.Magical);
-            Q.SetSkillshot(0.15f, 110f, 1375f, false, SkillshotType.SkillshotCircle);
+            Q.SetSkillshot(0.15f, 120f, 1345f, false, SkillshotType.SkillshotCircle);
 
             W = new Spell(SpellSlot.W, float.MaxValue, DamageType.Magical);
             W.SetSkillshot(0f, 230f, float.MaxValue, false, SkillshotType.SkillshotCircle);
@@ -401,8 +460,8 @@ namespace SFXOrianna.Champions
             {
                 return;
             }
-            if (Menu.Item(Menu.Name + ".shield.enabled").GetValue<bool>() && E.IsReady() && ManaManager.Check("shield") &&
-                !Player.InFountain() && !Player.IsRecalling())
+            if (Menu.Item(Menu.Name + ".shield.enabled").GetValue<bool>() && E.IsReady() &&
+                ResourceManager.Check("shield") && !Player.InFountain() && !Player.IsRecalling())
             {
                 if (Player.HealthPercent <= Menu.Item(Menu.Name + ".shield.min-health").GetValue<Slider>().Value)
                 {
@@ -589,8 +648,8 @@ namespace SFXOrianna.Champions
             {
                 return;
             }
-            var q = Menu.Item(Menu.Name + ".harass.q").GetValue<bool>() && ManaManager.Check("harass-q");
-            var w = Menu.Item(Menu.Name + ".harass.w").GetValue<bool>() && ManaManager.Check("harass-w");
+            var q = Menu.Item(Menu.Name + ".harass.q").GetValue<bool>() && ResourceManager.Check("harass-q");
+            var w = Menu.Item(Menu.Name + ".harass.w").GetValue<bool>() && ResourceManager.Check("harass-w");
             var e = Menu.Item(Menu.Name + ".harass.e").GetValue<bool>();
             if (w && W.IsReady())
             {
@@ -615,11 +674,12 @@ namespace SFXOrianna.Champions
                     return 0;
                 }
                 float damage = 0;
-                if (q && (Q.IsReady() || Q.Instance.CooldownExpires - Game.Time <= 1))
+                damage += Q.GetDamage(target);
+                if (q && (Q.IsReady() || Q.Instance.CooldownExpires - Game.Time <= 2))
                 {
                     damage += Q.GetDamage(target);
                 }
-                if (w && (W.IsReady() || W.Instance.CooldownExpires - Game.Time <= 1))
+                if (w && (W.IsReady() || W.Instance.CooldownExpires - Game.Time <= 2))
                 {
                     damage += W.GetDamage(target);
                 }
@@ -632,6 +692,7 @@ namespace SFXOrianna.Champions
                     damage += R.GetDamage(target);
                 }
                 damage += 2 * (float) Player.GetAutoAttackDamage(target, true);
+                damage *= 1.5f;
                 damage += ItemManager.CalculateComboDamage(target);
                 damage += SummonerManager.CalculateComboDamage(target);
                 return damage;
@@ -967,7 +1028,8 @@ namespace SFXOrianna.Champions
                         a =>
                             (Ball.Hero == null || Ball.Hero.NetworkId != a.NetworkId) && a.Distance(Player) <= E.Range &&
                             (a.IsMe || Menu.Item(Menu.Name + ".miscellaneous.e-allies").GetValue<bool>()) &&
-                            (a.IsMe && ManaManager.Check("e-self") || !a.IsMe && ManaManager.Check("e-allies"))))
+                            (a.IsMe && ResourceManager.Check("e-self") || !a.IsMe && ResourceManager.Check("e-allies")))
+                    )
                 {
                     var hits = GameObjects.EnemyHeroes.Count(e => e.Distance(ally) < spell.Range);
                     if (hits > totalHits)
@@ -1067,7 +1129,7 @@ namespace SFXOrianna.Champions
 
         protected override void LaneClear()
         {
-            if (!ManaManager.Check("lane-clear") || Ball.IsMoving)
+            if (!ResourceManager.Check("lane-clear") || Ball.IsMoving)
             {
                 return;
             }

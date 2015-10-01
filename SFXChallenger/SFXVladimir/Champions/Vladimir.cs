@@ -29,6 +29,7 @@ using System.Linq;
 using LeagueSharp;
 using LeagueSharp.Common;
 using SFXVladimir.Abstracts;
+using SFXVladimir.Args;
 using SFXVladimir.Enumerations;
 using SFXVladimir.Helpers;
 using SFXVladimir.Library;
@@ -41,6 +42,7 @@ using MinionTypes = SFXVladimir.Library.MinionTypes;
 using Orbwalking = SFXVladimir.Wrappers.Orbwalking;
 using Spell = SFXVladimir.Wrappers.Spell;
 using TargetSelector = SFXVladimir.SFXTargetSelector.TargetSelector;
+using Utils = SFXVladimir.Helpers.Utils;
 
 #endregion
 
@@ -63,11 +65,6 @@ namespace SFXVladimir.Champions
 
         protected override void OnLoad()
         {
-            AntiGapcloser.OnEnemyGapcloser += OnEnemyGapcloser;
-            CustomEvents.Unit.OnDash += OnUnitDash;
-            Drawing.OnDraw += OnDrawingDraw;
-            Orbwalking.OnNonKillableMinion += OnOrbwalkingNonKillableMinion;
-
             _ultimate = new UltimateManager
             {
                 Combo = true,
@@ -75,6 +72,7 @@ namespace SFXVladimir.Champions
                 Auto = true,
                 Flash = false,
                 Required = true,
+                Force = true,
                 Gapcloser = false,
                 GapcloserDelay = false,
                 Interrupt = false,
@@ -85,6 +83,11 @@ namespace SFXVladimir.Champions
                             hero, Menu.Item(Menu.Name + ".combo.q").GetValue<bool>() && Q.IsReady(),
                             Menu.Item(Menu.Name + ".combo.e").GetValue<bool>() && E.IsReady(), true)
             };
+
+            AntiGapcloser.OnEnemyGapcloser += OnEnemyGapcloser;
+            CustomEvents.Unit.OnDash += OnUnitDash;
+            Drawing.OnDraw += OnDrawingDraw;
+            Orbwalking.OnNonKillableMinion += OnOrbwalkingNonKillableMinion;
         }
 
         protected override void AddToMenu()
@@ -92,18 +95,38 @@ namespace SFXVladimir.Champions
             _ultimate.AddToMenu(Menu);
 
             var comboMenu = Menu.AddSubMenu(new Menu("Combo", Menu.Name + ".combo"));
-            HealthManager.AddToMenu(comboMenu, "combo-e", HealthCheckType.Minimum, HealthValueType.Percent, "E", 0);
+            ResourceManager.AddToMenu(
+                comboMenu,
+                new ResourceManagerArgs(
+                    "combo-e", ResourceType.Health, ResourceValueType.Percent, ResourceCheckType.Minimum)
+                {
+                    Prefix = "E",
+                    DefaultValue = 0
+                });
             comboMenu.AddItem(new MenuItem(comboMenu.Name + ".q", "Use Q").SetValue(true));
             comboMenu.AddItem(new MenuItem(comboMenu.Name + ".e", "Use E").SetValue(true));
 
             var harassMenu = Menu.AddSubMenu(new Menu("Harass", Menu.Name + ".harass"));
-            HealthManager.AddToMenu(harassMenu, "harass-e", HealthCheckType.Minimum, HealthValueType.Percent, "E");
+            ResourceManager.AddToMenu(
+                harassMenu,
+                new ResourceManagerArgs(
+                    "harass-e", ResourceType.Health, ResourceValueType.Percent, ResourceCheckType.Minimum)
+                {
+                    Prefix = "E",
+                    DefaultValue = 30
+                });
             harassMenu.AddItem(new MenuItem(harassMenu.Name + ".q", "Use Q").SetValue(true));
             harassMenu.AddItem(new MenuItem(harassMenu.Name + ".e", "Use E").SetValue(true));
 
             var laneclearMenu = Menu.AddSubMenu(new Menu("Lane Clear", Menu.Name + ".lane-clear"));
-            HealthManager.AddToMenu(
-                laneclearMenu, "lane-clear-e", HealthCheckType.Minimum, HealthValueType.Percent, "E");
+            ResourceManager.AddToMenu(
+                laneclearMenu,
+                new ResourceManagerArgs(
+                    "lane-clear-e", ResourceType.Health, ResourceValueType.Percent, ResourceCheckType.Minimum)
+                {
+                    Prefix = "E",
+                    DefaultValue = 45
+                });
             laneclearMenu.AddItem(new MenuItem(laneclearMenu.Name + ".q", "Use Q").SetValue(true));
             laneclearMenu.AddItem(new MenuItem(laneclearMenu.Name + ".e", "Use E").SetValue(true));
             laneclearMenu.AddItem(new MenuItem(laneclearMenu.Name + ".e-min", "E Min.").SetValue(new Slider(3, 1, 5)));
@@ -119,10 +142,27 @@ namespace SFXVladimir.Champions
             killstealMenu.AddItem(new MenuItem(killstealMenu.Name + ".q", "Use Q").SetValue(true));
 
             var miscMenu = Menu.AddSubMenu(new Menu("Misc", Menu.Name + ".miscellaneous"));
+
             HeroListManager.AddToMenu(
-                miscMenu.AddSubMenu(new Menu("W Gapcloser", miscMenu.Name + "w-gapcloser")), "w-gapcloser", false, false,
-                true, false, false, false);
-            HealthManager.AddToMenu(miscMenu, "auto-e", HealthCheckType.Minimum, HealthValueType.Percent, "E", 65);
+                miscMenu.AddSubMenu(new Menu("W Gapcloser", miscMenu.Name + "w-gapcloser")),
+                new HeroListManagerArgs("w-gapcloser")
+                {
+                    IsWhitelist = false,
+                    Allies = false,
+                    Enemies = true,
+                    DefaultValue = false,
+                    Enabled = false
+                });
+
+            ResourceManager.AddToMenu(
+                miscMenu,
+                new ResourceManagerArgs(
+                    "auto-e", ResourceType.Health, ResourceValueType.Percent, ResourceCheckType.Minimum)
+                {
+                    Prefix = "E",
+                    DefaultValue = 65
+                });
+
             miscMenu.AddItem(new MenuItem(miscMenu.Name + ".e-auto", "Auto E Stacking").SetValue(false));
 
             IndicatorManager.AddToMenu(DrawingManager.Menu, true);
@@ -249,7 +289,7 @@ namespace SFXVladimir.Champions
             }
 
             if (Menu.Item(Menu.Name + ".miscellaneous.e-auto").GetValue<bool>() && E.IsReady() &&
-                HealthManager.Check("auto-e") && !Player.IsRecalling() && !Player.InFountain())
+                ResourceManager.Check("auto-e") && !Player.IsRecalling() && !Player.InFountain())
             {
                 var buff = GetEBuff();
                 if (buff == null || (buff.EndTime - Game.Time) <= Game.Ping / 2000f + 0.5f)
@@ -295,7 +335,8 @@ namespace SFXVladimir.Champions
         protected override void Combo()
         {
             var q = Menu.Item(Menu.Name + ".combo.q").GetValue<bool>() && Q.IsReady();
-            var e = Menu.Item(Menu.Name + ".combo.e").GetValue<bool>() && E.IsReady() && HealthManager.Check("combo-e");
+            var e = Menu.Item(Menu.Name + ".combo.e").GetValue<bool>() && E.IsReady() &&
+                    ResourceManager.Check("combo-e");
             var r = _ultimate.IsActive(UltimateModeType.Combo) && R.IsReady();
 
             var rTarget = TargetSelector.GetTarget(R);
@@ -328,7 +369,7 @@ namespace SFXVladimir.Champions
         {
             var q = Menu.Item(Menu.Name + ".harass.q").GetValue<bool>() && Q.IsReady();
             var e = Menu.Item(Menu.Name + ".harass.e").GetValue<bool>() && E.IsReady() &&
-                    HealthManager.Check("harass-e");
+                    ResourceManager.Check("harass-e");
 
             if (q)
             {
@@ -424,7 +465,7 @@ namespace SFXVladimir.Champions
         {
             var q = Menu.Item(Menu.Name + ".lane-clear.q").GetValue<bool>() && Q.IsReady();
             var e = Menu.Item(Menu.Name + ".lane-clear.e").GetValue<bool>() && E.IsReady() &&
-                    HealthManager.Check("lane-clear-e");
+                    ResourceManager.Check("lane-clear-e");
             var eMin = Menu.Item(Menu.Name + ".lane-clear.e-min").GetValue<Slider>().Value;
 
             if (q)
@@ -470,7 +511,11 @@ namespace SFXVladimir.Champions
         {
             try
             {
-                if (E.Level > 0 && _eStacks != null && _eStacks.GetValue<bool>() && !Player.IsDead)
+                if (!Utils.ShouldDraw(true))
+                {
+                    return;
+                }
+                if (E.Level > 0 && _eStacks != null && _eStacks.GetValue<bool>())
                 {
                     var buff = GetEBuff();
                     var stacks = buff != null ? buff.Count - 1 : -1;

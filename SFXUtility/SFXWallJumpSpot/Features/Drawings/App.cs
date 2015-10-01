@@ -32,7 +32,7 @@ namespace SFXWallJumpSpot.Features.Drawings
     {
         public override string Name
         {
-            get { return "Drawings"; }
+            get { return "App"; }
         }
     }
 }

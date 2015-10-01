@@ -28,6 +28,7 @@ using System.Linq;
 using LeagueSharp;
 using LeagueSharp.Common;
 using SFXTwistedFate.Abstracts;
+using SFXTwistedFate.Args;
 using SFXTwistedFate.Enumerations;
 using SFXTwistedFate.Library;
 using SFXTwistedFate.Library.Extensions.NET;
@@ -73,8 +74,6 @@ namespace SFXTwistedFate.Champions
         protected override void OnLoad()
         {
             Interrupter2.OnInterruptableTarget += OnInterruptableTarget;
-            AntiGapcloser.OnEnemyGapcloser += OnAntiGapcloserEnemyGapcloser;
-            CustomEvents.Unit.OnDash += OnUnitDash;
             Drawing.OnDraw += OnDrawingDraw;
             Drawing.OnEndScene += OnDrawingEndScene;
             Obj_AI_Base.OnProcessSpellCast += OnObjAiBaseProcessSpellCast;
@@ -87,60 +86,87 @@ namespace SFXTwistedFate.Champions
             HitchanceManager.AddToMenu(
                 comboMenu.AddSubMenu(new Menu("Hitchance", comboMenu.Name + ".hitchance")), "combo",
                 new Dictionary<string, HitChance> { { "Q", HitChance.High } });
-            ManaManager.AddToMenu(comboMenu, "combo-blue", ManaCheckType.Minimum, ManaValueType.Percent, "W Blue");
             comboMenu.AddItem(
-                new MenuItem(comboMenu.Name + ".gold-percent", "W Gold Health Percent").SetValue(new Slider(20, 5, 75)));
-            comboMenu.AddItem(new MenuItem(comboMenu.Name + ".red-min", "W Red Min.").SetValue(new Slider(3, 1, 5)));
+                new MenuItem(comboMenu.Name + ".gold-percent", "Pick Gold Health <= %").SetValue(new Slider(20, 5, 75)));
+            comboMenu.AddItem(
+                new MenuItem(comboMenu.Name + ".red-min", "Pick Red Targets >=").SetValue(new Slider(3, 1, 5)));
             comboMenu.AddItem(new MenuItem(comboMenu.Name + ".q", "Use Q").SetValue(true));
             comboMenu.AddItem(new MenuItem(comboMenu.Name + ".w", "Use W").SetValue(true));
 
             var harassMenu = Menu.AddSubMenu(new Menu("Harass", Menu.Name + ".harass"));
             HitchanceManager.AddToMenu(
                 harassMenu.AddSubMenu(new Menu("Hitchance", harassMenu.Name + ".hitchance")), "harass",
-                new Dictionary<string, HitChance> { { "Q", HitChance.VeryHigh } });
-            ManaManager.AddToMenu(harassMenu, "harass", ManaCheckType.Minimum, ManaValueType.Percent);
-            ManaManager.AddToMenu(harassMenu, "harass-blue", ManaCheckType.Minimum, ManaValueType.Percent, "W Blue", 50);
+                new Dictionary<string, HitChance> { { "Q", HitChance.High } });
+            ResourceManager.AddToMenu(
+                harassMenu,
+                new ResourceManagerArgs(
+                    "harass", ResourceType.Mana, ResourceValueType.Percent, ResourceCheckType.Minimum)
+                {
+                    DefaultValue = 30
+                });
+            ResourceManager.AddToMenu(
+                harassMenu,
+                new ResourceManagerArgs(
+                    "harass-blue", ResourceType.Mana, ResourceValueType.Percent, ResourceCheckType.Minimum)
+                {
+                    Prefix = "W Blue",
+                    DefaultValue = 50
+                });
             harassMenu.AddItem(
-                new MenuItem(harassMenu.Name + ".w-card", "W Card").SetValue(
-                    new StringList(new[] { "Gold", "Red", "Blue" })));
-            harassMenu.AddItem(new MenuItem(harassMenu.Name + ".w-auto", "Auto Select").SetValue(true));
+                new MenuItem(harassMenu.Name + ".w-card", "Pick Card").SetValue(
+                    new StringList(new[] { "Auto", "Gold", "Red", "Blue" }, 3)));
             harassMenu.AddItem(new MenuItem(harassMenu.Name + ".q", "Use Q").SetValue(true));
             harassMenu.AddItem(new MenuItem(harassMenu.Name + ".w", "Use W").SetValue(true));
 
             var laneclearMenu = Menu.AddSubMenu(new Menu("Lane Clear", Menu.Name + ".lane-clear"));
-            ManaManager.AddToMenu(laneclearMenu, "lane-clear", ManaCheckType.Minimum, ManaValueType.Percent);
-            ManaManager.AddToMenu(
-                laneclearMenu, "lane-clear-blue", ManaCheckType.Minimum, ManaValueType.Percent, "W Blue", 50);
-            laneclearMenu.AddItem(new MenuItem(laneclearMenu.Name + ".q-min", "Q Min.").SetValue(new Slider(3, 1, 5)));
+            ResourceManager.AddToMenu(
+                laneclearMenu,
+                new ResourceManagerArgs(
+                    "lane-clear", ResourceType.Mana, ResourceValueType.Percent, ResourceCheckType.Minimum)
+                {
+                    Advanced = true,
+                    MaxValue = 101,
+                    LevelRanges = new SortedList<int, int> { { 1, 6 }, { 6, 12 }, { 12, 18 } },
+                    DefaultValues = new List<int> { 50, 50, 50 }
+                });
+            ResourceManager.AddToMenu(
+                laneclearMenu,
+                new ResourceManagerArgs(
+                    "lane-clear-blue", ResourceType.Mana, ResourceValueType.Percent, ResourceCheckType.Minimum)
+                {
+                    Prefix = "Blue",
+                    Advanced = true,
+                    MaxValue = 101,
+                    LevelRanges = new SortedList<int, int> { { 1, 6 }, { 6, 12 }, { 12, 18 } },
+                    DefaultValues = new List<int> { 60, 60, 60 }
+                });
+            laneclearMenu.AddItem(new MenuItem(laneclearMenu.Name + ".q-min", "Q Min.").SetValue(new Slider(4, 1, 5)));
             laneclearMenu.AddItem(new MenuItem(laneclearMenu.Name + ".q", "Use Q").SetValue(true));
             laneclearMenu.AddItem(new MenuItem(laneclearMenu.Name + ".w", "Use W").SetValue(true));
 
             var fleeMenu = Menu.AddSubMenu(new Menu("Flee", Menu.Name + ".flee"));
-            fleeMenu.AddItem(new MenuItem(fleeMenu.Name + ".w", "Use W Gold").SetValue(true));
+            fleeMenu.AddItem(new MenuItem(fleeMenu.Name + ".w", "Use Gold Card").SetValue(true));
 
             var miscMenu = Menu.AddSubMenu(new Menu("Misc", Menu.Name + ".miscellaneous"));
             miscMenu.AddItem(
-                new MenuItem(miscMenu.Name + ".w-range", "W Range").SetValue(new Slider((int) W.Range, 500, 1000)))
-                .ValueChanged +=
+                new MenuItem(miscMenu.Name + ".w-range", "Card Pick Distance").SetValue(
+                    new Slider((int) W.Range, 500, 800))).ValueChanged +=
                 delegate(object sender, OnValueChangeEventArgs args) { W.Range = args.GetNewValue<Slider>().Value; };
-            miscMenu.AddItem(new MenuItem(miscMenu.Name + ".w-delay", "W Delay").SetValue(new Slider(300, 0, 1000)))
+            miscMenu.AddItem(
+                new MenuItem(miscMenu.Name + ".w-delay", "Card Pick Delay").SetValue(new Slider(200, 0, 400)))
                 .ValueChanged +=
                 delegate(object sender, OnValueChangeEventArgs args) { Cards.Delay = args.GetNewValue<Slider>().Value; };
             miscMenu.AddItem(
-                new MenuItem(miscMenu.Name + ".mode", "Mode").SetValue(new StringList(new[] { "Burst", "Team" })));
+                new MenuItem(miscMenu.Name + ".mode", "W Mode").SetValue(new StringList(new[] { "Burst", "Team" })));
             miscMenu.AddItem(new MenuItem(miscMenu.Name + ".r-card", "Pick Card on R").SetValue(true));
-
-            HeroListManager.AddToMenu(
-                miscMenu.AddSubMenu(new Menu("Q Gapcloser", miscMenu.Name + "q-gapcloser")), "q-gapcloser", false, false,
-                true, false);
 
             var manualMenu = Menu.AddSubMenu(new Menu("Manual", Menu.Name + ".manual"));
             manualMenu.AddItem(
-                new MenuItem(manualMenu.Name + ".blue", "Hotkey Blue").SetValue(new KeyBind('Z', KeyBindType.Press)));
+                new MenuItem(manualMenu.Name + ".blue", "Hotkey Blue").SetValue(new KeyBind('T', KeyBindType.Press)));
             manualMenu.AddItem(
-                new MenuItem(manualMenu.Name + ".red", "Hotkey Red").SetValue(new KeyBind('U', KeyBindType.Press)));
+                new MenuItem(manualMenu.Name + ".red", "Hotkey Red").SetValue(new KeyBind('Y', KeyBindType.Press)));
             manualMenu.AddItem(
-                new MenuItem(manualMenu.Name + ".gold", "Hotkey Gold").SetValue(new KeyBind('I', KeyBindType.Press)));
+                new MenuItem(manualMenu.Name + ".gold", "Hotkey Gold").SetValue(new KeyBind('U', KeyBindType.Press)));
 
             W.Range = Menu.Item(Menu.Name + ".miscellaneous.w-range").GetValue<Slider>().Value;
             Cards.Delay = Menu.Item(Menu.Name + ".miscellaneous.w-delay").GetValue<Slider>().Value;
@@ -170,7 +196,7 @@ namespace SFXTwistedFate.Champions
             Q = new Spell(SpellSlot.Q, 1450f, DamageType.Magical);
             Q.SetSkillshot(0.25f, 40f, 1000f, false, SkillshotType.SkillshotLine);
 
-            W = new Spell(SpellSlot.W, 785f, DamageType.Magical);
+            W = new Spell(SpellSlot.W, 550f, DamageType.Magical);
             W.SetSkillshot(0.5f, 100f, Player.BasicAttack.MissileSpeed, false, SkillshotType.SkillshotCircle);
 
             E = new Spell(SpellSlot.E);
@@ -448,54 +474,6 @@ namespace SFXTwistedFate.Champions
             }
         }
 
-        private void OnUnitDash(Obj_AI_Base sender, Dash.DashItem args)
-        {
-            try
-            {
-                var hero = sender as Obj_AI_Hero;
-                if (!sender.IsEnemy || hero == null)
-                {
-                    return;
-                }
-                if (HeroListManager.Check("q-gapcloser", hero) && Player.Distance(args.EndPos) <= Q.Range && Q.IsReady())
-                {
-                    var target = TargetSelector.GetTarget(Q.Range * 0.85f, Q.DamageType);
-                    if (target == null || sender.NetworkId.Equals(target.NetworkId))
-                    {
-                        Q.Cast(args.EndPos);
-                    }
-                }
-            }
-            catch (Exception ex)
-            {
-                Global.Logger.AddItem(new LogItem(ex));
-            }
-        }
-
-        private void OnAntiGapcloserEnemyGapcloser(ActiveGapcloser args)
-        {
-            try
-            {
-                if (!args.Sender.IsEnemy)
-                {
-                    return;
-                }
-                if (HeroListManager.Check("q-gapcloser", args.Sender) && args.End.Distance(Player.Position) < Q.Range &&
-                    Q.IsReady())
-                {
-                    var target = TargetSelector.GetTarget(Q.Range * 0.85f, Q.DamageType);
-                    if (target == null || args.Sender.NetworkId.Equals(target.NetworkId))
-                    {
-                        Q.Cast(args.End);
-                    }
-                }
-            }
-            catch (Exception ex)
-            {
-                Global.Logger.AddItem(new LogItem(ex));
-            }
-        }
-
         protected override void Combo()
         {
             var q = Menu.Item(Menu.Name + ".combo.q").GetValue<bool>();
@@ -575,7 +553,7 @@ namespace SFXTwistedFate.Champions
                     }
                 }
             }
-            if (ManaManager.Check("harass") && q && Q.IsReady())
+            if (ResourceManager.Check("harass") && q && Q.IsReady())
             {
                 var target = TargetSelector.GetTarget(Q, false);
                 if (target != null)
@@ -599,7 +577,7 @@ namespace SFXTwistedFate.Champions
             var qMin = Menu.Item(Menu.Name + ".lane-clear.q-min").GetValue<Slider>().Value;
             var w = Menu.Item(Menu.Name + ".lane-clear.w").GetValue<bool>();
 
-            if (ManaManager.Check("lane-clear") && q && Q.IsReady())
+            if (ResourceManager.Check("lane-clear") && q && Q.IsReady())
             {
                 var minions = MinionManager.GetMinions(
                     Q.Range * 1.2f, MinionTypes.All, MinionTeam.NotAlly, MinionOrderTypes.MaxHealth);
@@ -628,7 +606,7 @@ namespace SFXTwistedFate.Champions
                     W.Range * 1.2f, MinionTypes.All, MinionTeam.NotAlly, MinionOrderTypes.MaxHealth);
                 if (minions.Any())
                 {
-                    Cards.Select(!ManaManager.Check("lane-clear-blue") ? CardColor.Blue : CardColor.Red);
+                    Cards.Select(!ResourceManager.Check("lane-clear-blue") ? CardColor.Blue : CardColor.Red);
                 }
             }
         }
@@ -680,7 +658,7 @@ namespace SFXTwistedFate.Champions
         {
             try
             {
-                if (Player.IsDead || !Player.Position.IsOnScreen())
+                if (!Utils.ShouldDraw(true))
                 {
                     return;
                 }
@@ -711,6 +689,10 @@ namespace SFXTwistedFate.Champions
         {
             try
             {
+                if (!Utils.ShouldDraw())
+                {
+                    return;
+                }
                 if (_rMinimap.GetValue<bool>() && R.Level > 0 && (R.Instance.CooldownExpires - Game.Time) < 3 &&
                     !Player.IsDead)
                 {
@@ -728,10 +710,12 @@ namespace SFXTwistedFate.Champions
             switch (index)
             {
                 case 0:
-                    return CardColor.Gold;
+                    return CardColor.None;
                 case 1:
-                    return CardColor.Red;
+                    return CardColor.Gold;
                 case 2:
+                    return CardColor.Red;
+                case 3:
                     return CardColor.Blue;
             }
             return CardColor.None;
@@ -762,12 +746,18 @@ namespace SFXTwistedFate.Champions
                 {
                     return cards;
                 }
+                var selectedCard =
+                    GetSelectedCardColor(Menu.Item(Menu.Name + ".harass.w-card").GetValue<StringList>().SelectedIndex);
                 var burst = Menu.Item(Menu.Name + ".miscellaneous.mode").GetValue<StringList>().SelectedIndex == 0;
                 var red = 0;
                 var blue = 0;
                 var gold = 0;
-                if (!burst &&
-                    (mode == "combo" || mode == "harass" && Menu.Item(Menu.Name + ".harass.w-auto").GetValue<bool>()))
+                var blueMana1 = (ObjectManager.Player.Mana < (W.Instance.ManaCost + Q.Instance.ManaCost) &&
+                                 ObjectManager.Player.Mana > (Q.Instance.ManaCost - 10));
+                var blueMana2 = (ObjectManager.Player.Mana < (W.Instance.ManaCost + Q.Instance.ManaCost) &&
+                                 ObjectManager.Player.Mana > (Q.Instance.ManaCost - 20));
+                var blueMana3 = (ObjectManager.Player.Mana < (W.Instance.ManaCost + Q.Instance.ManaCost));
+                if (!burst && (mode == "combo" || mode == "harass" && selectedCard == CardColor.None))
                 {
                     if (Q.Level == 0)
                     {
@@ -778,7 +768,9 @@ namespace SFXTwistedFate.Champions
                     {
                         gold++;
                     }
-                    if (!ManaManager.Check(mode + "-blue"))
+                    if (mode == "combo" &&
+                        (Player.ManaPercent < 10 || W.Level == 1 && blueMana1 || W.Level == 2 && blueMana2 ||
+                         W.Level > 2 && blueMana3) || mode == "harass" && !ResourceManager.Check("harass-blue"))
                     {
                         blue = 4;
                     }
@@ -854,11 +846,6 @@ namespace SFXTwistedFate.Champions
                         }
                     }
 
-                    var blueMana1 = (ObjectManager.Player.Mana < (W.Instance.ManaCost + Q.Instance.ManaCost) &&
-                                     ObjectManager.Player.Mana > (Q.Instance.ManaCost - 10));
-                    var blueMana2 = (ObjectManager.Player.Mana < (W.Instance.ManaCost + Q.Instance.ManaCost) &&
-                                     ObjectManager.Player.Mana > (Q.Instance.ManaCost - 20));
-                    var blueMana3 = (ObjectManager.Player.Mana < (W.Instance.ManaCost + Q.Instance.ManaCost));
                     if (!cards.Any())
                     {
                         if (ObjectManager.Player.HealthPercent <=
@@ -866,8 +853,8 @@ namespace SFXTwistedFate.Champions
                         {
                             cards.Add(CardColor.Gold);
                         }
-                        else if ((!ManaManager.Check("combo-blue") || (W.Level == 1 && blueMana1) ||
-                                  W.Level == 2 && blueMana2) || W.Level > 2 && blueMana3)
+                        else if (Player.ManaPercent < 10 || W.Level == 1 && blueMana1 || W.Level == 2 && blueMana2 ||
+                                 W.Level > 2 && blueMana3)
                         {
                             cards.Add(CardColor.Blue);
                         }
@@ -888,16 +875,13 @@ namespace SFXTwistedFate.Champions
                 }
                 else if (mode == "harass" && !cards.Any())
                 {
-                    if (Menu.Item(Menu.Name + ".harass.w-auto").GetValue<bool>() && burst)
+                    if (selectedCard == CardColor.None && burst)
                     {
                         cards.Add(target.Distance(Player) > W.Range * 0.8f ? CardColor.Gold : CardColor.Blue);
                     }
                     else
                     {
-                        var card = !ManaManager.Check("harass-blue")
-                            ? CardColor.Blue
-                            : GetSelectedCardColor(
-                                Menu.Item(Menu.Name + ".harass.w-card").GetValue<StringList>().SelectedIndex);
+                        var card = !ResourceManager.Check("harass-blue") ? CardColor.Blue : selectedCard;
                         if (card != CardColor.None)
                         {
                             cards.Add(card);
@@ -965,7 +949,7 @@ namespace SFXTwistedFate.Champions
 
             public static bool ShouldWait
             {
-                get { return LeagueSharp.Common.Utils.TickCount - _lastWSent <= Delay; }
+                get { return LeagueSharp.Common.Utils.TickCount - _lastWSent <= 200; }
             }
 
             public static int Delay { get; set; }
@@ -1050,7 +1034,9 @@ namespace SFXTwistedFate.Champions
                                 s == CardColor.Gold && wName == "goldcardlock" ||
                                 s == CardColor.Red && wName == "redcardlock"))
                     {
-                        ObjectManager.Player.Spellbook.CastSpell(SpellSlot.W, false);
+                        Utility.DelayAction.Add(
+                            Delay - Game.Ping / 2,
+                            delegate { ObjectManager.Player.Spellbook.CastSpell(SpellSlot.W, false); });
                     }
                 }
                 catch (Exception ex)

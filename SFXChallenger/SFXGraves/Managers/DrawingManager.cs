@@ -31,6 +31,7 @@ using LeagueSharp.Common;
 using SFXGraves.Interfaces;
 using SFXGraves.Library.Extensions.SharpDX;
 using SFXGraves.Library.Logger;
+using Utils = SFXGraves.Helpers.Utils;
 
 #endregion
 
@@ -176,7 +177,7 @@ namespace SFXGraves.Managers
         {
             try
             {
-                if (Menu == null || _champion.Spells == null || ObjectManager.Player.IsDead)
+                if (Menu == null || _champion.Spells == null || !Utils.ShouldDraw())
                 {
                     return;
                 }

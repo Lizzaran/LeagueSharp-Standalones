@@ -32,7 +32,7 @@ namespace SFXGoldEfficiency.Features.Trackers
     {
         public override string Name
         {
-            get { return "Trackers"; }
+            get { return "App"; }
         }
     }
 }

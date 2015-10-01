@@ -28,6 +28,7 @@ using System.Linq;
 using LeagueSharp;
 using LeagueSharp.Common;
 using SFXCassiopeia.Abstracts;
+using SFXCassiopeia.Args;
 using SFXCassiopeia.Enumerations;
 using SFXCassiopeia.Helpers;
 using SFXCassiopeia.Library;
@@ -83,6 +84,7 @@ namespace SFXCassiopeia.Champions
                 Auto = true,
                 Flash = true,
                 Required = true,
+                Force = true,
                 Gapcloser = true,
                 GapcloserDelay = false,
                 Interrupt = true,
@@ -127,23 +129,44 @@ namespace SFXCassiopeia.Champions
             HitchanceManager.AddToMenu(
                 harassMenu.AddSubMenu(new Menu("Hitchance", harassMenu.Name + ".hitchance")), "harass",
                 new Dictionary<string, HitChance> { { "Q", HitChance.VeryHigh }, { "W", HitChance.High } });
-            ManaManager.AddToMenu(
-                harassMenu, "harass", ManaCheckType.Minimum, ManaValueType.Total, string.Empty, 70, 0, 750);
+            ResourceManager.AddToMenu(
+                harassMenu,
+                new ResourceManagerArgs(
+                    "harass", ResourceType.Mana, ResourceValueType.Percent, ResourceCheckType.Minimum)
+                {
+                    DefaultValue = 30
+                });
             harassMenu.AddItem(new MenuItem(harassMenu.Name + ".q", "Use Q").SetValue(true));
             harassMenu.AddItem(new MenuItem(harassMenu.Name + ".w", "Use W").SetValue(true));
             harassMenu.AddItem(new MenuItem(harassMenu.Name + ".e", "Use E").SetValue(true));
 
             var laneclearMenu = Menu.AddSubMenu(new Menu("Lane Clear", Menu.Name + ".lane-clear"));
-            ManaManager.AddToMenu(
-                laneclearMenu, "lane-clear", ManaCheckType.Minimum, ManaValueType.Total, string.Empty, 90, 0, 750);
+            ResourceManager.AddToMenu(
+                laneclearMenu,
+                new ResourceManagerArgs(
+                    "lane-clear", ResourceType.Mana, ResourceValueType.Percent, ResourceCheckType.Minimum)
+                {
+                    Advanced = true,
+                    MaxValue = 101,
+                    LevelRanges = new SortedList<int, int> { { 1, 6 }, { 6, 12 }, { 12, 18 } },
+                    DefaultValues = new List<int> { 50, 30, 30 }
+                });
             laneclearMenu.AddItem(new MenuItem(laneclearMenu.Name + ".aa", "Use AutoAttacks").SetValue(true));
             laneclearMenu.AddItem(new MenuItem(laneclearMenu.Name + ".q", "Use Q").SetValue(true));
             laneclearMenu.AddItem(new MenuItem(laneclearMenu.Name + ".w", "Use W").SetValue(true));
             laneclearMenu.AddItem(new MenuItem(laneclearMenu.Name + ".e", "Use E").SetValue(true));
 
             var lasthitMenu = Menu.AddSubMenu(new Menu("Last Hit", Menu.Name + ".lasthit"));
-            ManaManager.AddToMenu(
-                lasthitMenu, "lasthit", ManaCheckType.Maximum, ManaValueType.Percent, string.Empty, 70);
+            ResourceManager.AddToMenu(
+                lasthitMenu,
+                new ResourceManagerArgs(
+                    "lasthit", ResourceType.Mana, ResourceValueType.Percent, ResourceCheckType.Maximum)
+                {
+                    Advanced = true,
+                    MaxValue = 101,
+                    LevelRanges = new SortedList<int, int> { { 1, 6 }, { 6, 12 }, { 12, 18 } },
+                    DefaultValues = new List<int> { 90, 70, 70 }
+                });
             lasthitMenu.AddItem(new MenuItem(lasthitMenu.Name + ".e", "Use E").SetValue(true));
             lasthitMenu.AddItem(new MenuItem(lasthitMenu.Name + ".e-poison", "Use E Poison").SetValue(true));
 
@@ -152,25 +175,56 @@ namespace SFXCassiopeia.Champions
 
             var killstealMenu = Menu.AddSubMenu(new Menu("Killsteal", Menu.Name + ".killsteal"));
             killstealMenu.AddItem(new MenuItem(killstealMenu.Name + ".e", "Use E").SetValue(true));
-            killstealMenu.AddItem(new MenuItem(killstealMenu.Name + ".e-poison", "Use E Poison").SetValue(true));
+            killstealMenu.AddItem(new MenuItem(killstealMenu.Name + ".e-poison", "Use E Poison Only").SetValue(true));
 
             var miscMenu = Menu.AddSubMenu(new Menu("Misc", Menu.Name + ".miscellaneous"));
             DelayManager.AddToMenu(miscMenu, "e-delay", "E", 250, 0, 1000);
+
             HeroListManager.AddToMenu(
-                miscMenu.AddSubMenu(new Menu("Q Gapcloser", miscMenu.Name + "q-gapcloser")), "q-gapcloser", false, false,
-                true, false);
+                miscMenu.AddSubMenu(new Menu("Q Gapcloser", miscMenu.Name + "q-gapcloser")),
+                new HeroListManagerArgs("q-gapcloser")
+                {
+                    IsWhitelist = false,
+                    Allies = false,
+                    Enemies = true,
+                    DefaultValue = false
+                });
             HeroListManager.AddToMenu(
-                miscMenu.AddSubMenu(new Menu("Q Fleeing", miscMenu.Name + "q-fleeing")), "q-fleeing", false, false, true,
-                false);
+                miscMenu.AddSubMenu(new Menu("Q Fleeing", miscMenu.Name + "q-fleeing")),
+                new HeroListManagerArgs("q-fleeing")
+                {
+                    IsWhitelist = false,
+                    Allies = false,
+                    Enemies = true,
+                    DefaultValue = false
+                });
             HeroListManager.AddToMenu(
-                miscMenu.AddSubMenu(new Menu("W Gapcloser", miscMenu.Name + "w-gapcloser")), "w-gapcloser", false, false,
-                true, false);
+                miscMenu.AddSubMenu(new Menu("W Gapcloser", miscMenu.Name + "w-gapcloser")),
+                new HeroListManagerArgs("w-gapcloser")
+                {
+                    IsWhitelist = false,
+                    Allies = false,
+                    Enemies = true,
+                    DefaultValue = false
+                });
             HeroListManager.AddToMenu(
-                miscMenu.AddSubMenu(new Menu("W Immobile", miscMenu.Name + "w-immobile")), "w-immobile", false, false,
-                true, false);
+                miscMenu.AddSubMenu(new Menu("W Immobile", miscMenu.Name + "w-immobile")),
+                new HeroListManagerArgs("w-immobile")
+                {
+                    IsWhitelist = false,
+                    Allies = false,
+                    Enemies = true,
+                    DefaultValue = false
+                });
             HeroListManager.AddToMenu(
-                miscMenu.AddSubMenu(new Menu("W Fleeing", miscMenu.Name + "w-fleeing")), "w-fleeing", false, false, true,
-                false);
+                miscMenu.AddSubMenu(new Menu("W Fleeing", miscMenu.Name + "w-fleeing")),
+                new HeroListManagerArgs("w-fleeing")
+                {
+                    IsWhitelist = false,
+                    Allies = false,
+                    Enemies = true,
+                    DefaultValue = false
+                });
 
             R.Range = Menu.Item(Menu.Name + ".ultimate.range").GetValue<Slider>().Value;
             DrawingManager.Update(
@@ -180,12 +234,12 @@ namespace SFXCassiopeia.Champions
             IndicatorManager.AddToMenu(DrawingManager.Menu, true);
             IndicatorManager.Add(Q);
             IndicatorManager.Add(W);
-            IndicatorManager.Add("E", hero => E.GetDamage(hero) * 5);
+            IndicatorManager.Add("E", hero => E.GetDamage(hero) * 3);
             IndicatorManager.Add(R);
             IndicatorManager.Finale();
 
             Weights.AddItem(
-                new Weights.Item("poison-time", "Poison Time", 10, true, hero => GetPoisonBuffEndTime(hero) + 1));
+                new Weights.Item("poison-time", "Poison Time", 5, false, hero => GetPoisonBuffEndTime(hero) + 1));
         }
 
         protected override void SetupSpells()
@@ -206,7 +260,7 @@ namespace SFXCassiopeia.Champions
 
         protected override void OnPreUpdate()
         {
-            if ((Orbwalker.ActiveMode == Orbwalking.OrbwalkingMode.LastHit && ManaManager.Check("lasthit")) &&
+            if ((Orbwalker.ActiveMode == Orbwalking.OrbwalkingMode.LastHit && ResourceManager.Check("lasthit")) &&
                 E.IsReady())
             {
                 var ePoison = Menu.Item(Menu.Name + ".lasthit.e-poison").GetValue<bool>();
@@ -347,7 +401,7 @@ namespace SFXCassiopeia.Champions
                         var m = args.Target as Obj_AI_Minion;
                         if (m != null && (_lastEEndTime < Game.Time || E.IsReady()) ||
                             (GetPoisonBuffEndTime(m) < E.ArrivalTime(m) || E.Instance.ManaCost > Player.Mana) ||
-                            !ManaManager.Check("lane-clear"))
+                            !ResourceManager.Check("lane-clear"))
                         {
                             args.Process = true;
                         }
@@ -363,7 +417,8 @@ namespace SFXCassiopeia.Champions
                         {
                             args.Process = Menu.Item(Menu.Name + ".lasthit.e").GetValue<bool>() ||
                                            (Menu.Item(Menu.Name + ".lasthit.e-poison").GetValue<bool>() &&
-                                            GetPoisonBuffEndTime(m) > E.ArrivalTime(m)) && ManaManager.Check("lasthit");
+                                            GetPoisonBuffEndTime(m) > E.ArrivalTime(m)) &&
+                                           ResourceManager.Check("lasthit");
                         }
                     }
                 }
@@ -697,7 +752,7 @@ namespace SFXCassiopeia.Champions
             {
                 WLogic(W.GetHitChance("harass"));
             }
-            if (Menu.Item(Menu.Name + ".harass.e").GetValue<bool>() && ManaManager.Check("harass"))
+            if (Menu.Item(Menu.Name + ".harass.e").GetValue<bool>() && ResourceManager.Check("harass"))
             {
                 ELogic();
             }
@@ -727,7 +782,7 @@ namespace SFXCassiopeia.Champions
             var w = Menu.Item(Menu.Name + ".lane-clear.w").GetValue<bool>() && W.IsReady();
 
             if (Menu.Item(Menu.Name + ".lane-clear.e").GetValue<bool>() && E.IsReady() &&
-                ManaManager.Check("lane-clear") && DelayManager.Check("e-delay", _lastECast))
+                ResourceManager.Check("lane-clear") && DelayManager.Check("e-delay", _lastECast))
             {
                 var minion =
                     MinionManager.GetMinions(

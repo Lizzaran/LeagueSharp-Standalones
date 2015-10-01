@@ -34,7 +34,7 @@ using Orbwalking = SFXKogMaw.Wrappers.Orbwalking;
 
 namespace SFXKogMaw.Helpers
 {
-    internal static class Invulnerable
+    public class Invulnerable
     {
         public static readonly HashSet<Item> Items = new HashSet<Item>
         {

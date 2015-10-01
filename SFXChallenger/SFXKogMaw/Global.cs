@@ -33,6 +33,7 @@ namespace SFXKogMaw
 {
     internal class Global
     {
+        public static string Prefix = "SFX";
         public static string Name = "SFXKogMaw";
         public static ILogger Logger;
         public static string LogDir = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, Name + " - Logs");

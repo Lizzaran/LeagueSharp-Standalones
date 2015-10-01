@@ -31,6 +31,7 @@ using LeagueSharp.Common;
 using SFXTwistedFate.Interfaces;
 using SFXTwistedFate.Library.Extensions.SharpDX;
 using SFXTwistedFate.Library.Logger;
+using Utils = SFXTwistedFate.Helpers.Utils;
 
 #endregion
 
@@ -176,7 +177,7 @@ namespace SFXTwistedFate.Managers
         {
             try
             {
-                if (Menu == null || _champion.Spells == null || ObjectManager.Player.IsDead)
+                if (Menu == null || _champion.Spells == null || !Utils.ShouldDraw())
                 {
                     return;
                 }

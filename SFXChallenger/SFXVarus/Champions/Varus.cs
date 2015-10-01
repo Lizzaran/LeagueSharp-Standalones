@@ -28,6 +28,7 @@ using System.Linq;
 using LeagueSharp;
 using LeagueSharp.Common;
 using SFXVarus.Abstracts;
+using SFXVarus.Args;
 using SFXVarus.Enumerations;
 using SFXVarus.Helpers;
 using SFXVarus.Library;
@@ -70,9 +71,6 @@ namespace SFXVarus.Champions
 
         protected override void OnLoad()
         {
-            AntiGapcloser.OnEnemyGapcloser += OnEnemyGapcloser;
-            Drawing.OnDraw += OnDrawingDraw;
-
             _ultimate = new UltimateManager
             {
                 Combo = true,
@@ -80,6 +78,7 @@ namespace SFXVarus.Champions
                 Auto = true,
                 Flash = false,
                 Required = true,
+                Force = true,
                 Gapcloser = true,
                 GapcloserDelay = false,
                 Interrupt = false,
@@ -90,6 +89,9 @@ namespace SFXVarus.Champions
                             hero, Menu.Item(Menu.Name + ".combo.q").GetValue<bool>() && Q.IsReady(),
                             Menu.Item(Menu.Name + ".combo.e").GetValue<bool>() && E.IsReady(), true)
             };
+
+            AntiGapcloser.OnEnemyGapcloser += OnEnemyGapcloser;
+            Drawing.OnDraw += OnDrawingDraw;
         }
 
         protected override void AddToMenu()
@@ -97,8 +99,15 @@ namespace SFXVarus.Champions
             var ultimateMenu = _ultimate.AddToMenu(Menu);
 
             ultimateMenu.AddItem(
-                new MenuItem(ultimateMenu.Name + ".radius", "Range").SetValue(new Slider(450, 100, 600))).ValueChanged
-                +=
+                new MenuItem(ultimateMenu.Name + ".range", "Range").SetValue(new Slider((int) R.Range, 500, 1200)))
+                .ValueChanged +=
+                delegate(object sender, OnValueChangeEventArgs args) { R.Range = args.GetNewValue<Slider>().Value; };
+
+            R.Range = Menu.Item(Menu.Name + ".ultimate.range").GetValue<Slider>().Value;
+
+            ultimateMenu.AddItem(
+                new MenuItem(ultimateMenu.Name + ".radius", "Spread Radius").SetValue(new Slider(450, 100, 600)))
+                .ValueChanged +=
                 delegate(object sender, OnValueChangeEventArgs args)
                 {
                     _rSpreadRadius = args.GetNewValue<Slider>().Value;
@@ -111,58 +120,107 @@ namespace SFXVarus.Champions
                 comboMenu.AddSubMenu(new Menu("Hitchance", comboMenu.Name + ".hitchance")), "combo",
                 new Dictionary<string, HitChance>
                 {
-                    { "Q", HitChance.High },
+                    { "Q", HitChance.VeryHigh },
                     { "E", HitChance.High },
                     { "R", HitChance.VeryHigh }
                 });
-            comboMenu.AddItem(
-                new MenuItem(comboMenu.Name + ".q-fast-cast-min", "Fast Cast @ Health %").SetValue(new Slider(25)));
-            comboMenu.AddItem(new MenuItem(comboMenu.Name + ".q-range", "Q Out of Range").SetValue(true));
-            comboMenu.AddItem(new MenuItem(comboMenu.Name + ".q-always", "Q Always").SetValue(false));
-            comboMenu.AddItem(new MenuItem(comboMenu.Name + ".q-stacks", "Q Stacks >=")).SetValue(new Slider(3, 1, 3));
-            comboMenu.AddItem(new MenuItem(comboMenu.Name + ".q-min", "Q Min.").SetValue(new Slider(3, 1, 3)));
+
+            var comboQMenu = comboMenu.AddSubMenu(new Menu("Q Settings", comboMenu.Name + ".q-settings"));
+            comboQMenu.AddItem(new MenuItem(comboQMenu.Name + ".always", "Cast Always").SetValue(false));
+            comboQMenu.AddItem(
+                new MenuItem(comboQMenu.Name + ".fast-cast-min", "Fast Cast Health <= %").SetValue(new Slider(20)));
+            comboQMenu.AddItem(new MenuItem(comboQMenu.Name + ".separator", string.Empty));
+            comboQMenu.AddItem(new MenuItem(comboQMenu.Name + ".stacks", "Min. Stacks")).SetValue(new Slider(3, 1, 3));
+            comboQMenu.AddItem(new MenuItem(comboQMenu.Name + ".or", "OR"));
+            comboQMenu.AddItem(new MenuItem(comboQMenu.Name + ".min", "Min. Hits").SetValue(new Slider(2, 1, 5)));
+
+            var comboEMenu = comboMenu.AddSubMenu(new Menu("E Settings", comboMenu.Name + ".e-settings"));
+            comboEMenu.AddItem(new MenuItem(comboEMenu.Name + ".always", "Cast Always").SetValue(false));
+            comboEMenu.AddItem(new MenuItem(comboEMenu.Name + ".separator", string.Empty));
+            comboEMenu.AddItem(new MenuItem(comboEMenu.Name + ".stacks", "Min. Stacks")).SetValue(new Slider(2, 1, 3));
+            comboEMenu.AddItem(new MenuItem(comboEMenu.Name + ".or", "OR"));
+            comboEMenu.AddItem(new MenuItem(comboEMenu.Name + ".min", "Min. Hits").SetValue(new Slider(3, 1, 5)));
+
             comboMenu.AddItem(new MenuItem(comboMenu.Name + ".q", "Use Q").SetValue(true));
-            comboMenu.AddItem(new MenuItem(comboMenu.Name + ".e-always", "E Always").SetValue(true));
-            comboMenu.AddItem(new MenuItem(comboMenu.Name + ".e-stacks", "E Stacks >=")).SetValue(new Slider(3, 1, 3));
-            comboMenu.AddItem(new MenuItem(comboMenu.Name + ".e-min", "E Min.").SetValue(new Slider(3, 1, 3)));
             comboMenu.AddItem(new MenuItem(comboMenu.Name + ".e", "Use E").SetValue(true));
 
             var harassMenu = Menu.AddSubMenu(new Menu("Harass", Menu.Name + ".harass"));
             HitchanceManager.AddToMenu(
                 harassMenu.AddSubMenu(new Menu("Hitchance", harassMenu.Name + ".hitchance")), "harass",
                 new Dictionary<string, HitChance> { { "Q", HitChance.High }, { "E", HitChance.High } });
-            ManaManager.AddToMenu(harassMenu, "harass", ManaCheckType.Minimum, ManaValueType.Percent);
-            harassMenu.AddItem(
-                new MenuItem(harassMenu.Name + ".q-fast-cast-min", "Fast Cast @ Health %").SetValue(new Slider(25)));
-            harassMenu.AddItem(new MenuItem(harassMenu.Name + ".q-range", "Q Out of Range").SetValue(true));
-            harassMenu.AddItem(new MenuItem(harassMenu.Name + ".q-always", "Q Always").SetValue(false));
-            harassMenu.AddItem(new MenuItem(harassMenu.Name + ".q-stacks", "Q Stacks >=")).SetValue(new Slider(3, 1, 3));
-            harassMenu.AddItem(new MenuItem(harassMenu.Name + ".q-min", "Q Min.").SetValue(new Slider(3, 1, 3)));
+            ResourceManager.AddToMenu(
+                harassMenu,
+                new ResourceManagerArgs(
+                    "harass", ResourceType.Mana, ResourceValueType.Percent, ResourceCheckType.Minimum)
+                {
+                    DefaultValue = 30
+                });
+
+            var harassQMenu = harassMenu.AddSubMenu(new Menu("Q Settings", harassMenu.Name + ".q-settings"));
+            harassQMenu.AddItem(new MenuItem(harassQMenu.Name + ".always", "Cast Always").SetValue(true));
+            harassQMenu.AddItem(
+                new MenuItem(harassQMenu.Name + ".fast-cast-min", "Fast Cast Health <= %").SetValue(new Slider(25)));
+            harassQMenu.AddItem(new MenuItem(harassQMenu.Name + ".separator", string.Empty));
+            harassQMenu.AddItem(new MenuItem(harassQMenu.Name + ".stacks", "Min. Stacks")).SetValue(new Slider(3, 1, 3));
+            harassQMenu.AddItem(new MenuItem(harassQMenu.Name + ".or", "OR"));
+            harassQMenu.AddItem(new MenuItem(harassQMenu.Name + ".min", "Min. Hits").SetValue(new Slider(2, 1, 5)));
+
+            var harassEMenu = harassMenu.AddSubMenu(new Menu("E Settings", harassMenu.Name + ".e-settings"));
+            harassEMenu.AddItem(new MenuItem(harassEMenu.Name + ".always", "Cast Always").SetValue(true));
+            harassEMenu.AddItem(new MenuItem(harassEMenu.Name + ".separator", string.Empty));
+            harassEMenu.AddItem(new MenuItem(harassEMenu.Name + ".stacks", "Min. Stacks")).SetValue(new Slider(2, 1, 3));
+            harassEMenu.AddItem(new MenuItem(harassEMenu.Name + ".or", "OR"));
+            harassEMenu.AddItem(new MenuItem(harassEMenu.Name + ".min", "Min. Hits").SetValue(new Slider(3, 1, 5)));
+
             harassMenu.AddItem(new MenuItem(harassMenu.Name + ".q", "Use Q").SetValue(true));
-            harassMenu.AddItem(new MenuItem(harassMenu.Name + ".e-always", "E Always").SetValue(false));
-            harassMenu.AddItem(new MenuItem(harassMenu.Name + ".e-stacks", "E Stacks >=")).SetValue(new Slider(3, 1, 3));
-            harassMenu.AddItem(new MenuItem(harassMenu.Name + ".e-min", "E Min.").SetValue(new Slider(3, 1, 3)));
             harassMenu.AddItem(new MenuItem(harassMenu.Name + ".e", "Use E").SetValue(true));
 
             var laneclearMenu = Menu.AddSubMenu(new Menu("Lane Clear", Menu.Name + ".lane-clear"));
-            ManaManager.AddToMenu(laneclearMenu, "lane-clear", ManaCheckType.Minimum, ManaValueType.Percent);
+            ResourceManager.AddToMenu(
+                laneclearMenu,
+                new ResourceManagerArgs(
+                    "lane-clear-q", ResourceType.Mana, ResourceValueType.Percent, ResourceCheckType.Minimum)
+                {
+                    Prefix = "Q",
+                    Advanced = true,
+                    MaxValue = 101,
+                    LevelRanges = new SortedList<int, int> { { 1, 6 }, { 6, 12 }, { 12, 18 } },
+                    DefaultValues = new List<int> { 50, 30, 30 }
+                });
+            ResourceManager.AddToMenu(
+                laneclearMenu,
+                new ResourceManagerArgs(
+                    "lane-clear-e", ResourceType.Mana, ResourceValueType.Percent, ResourceCheckType.Minimum)
+                {
+                    Prefix = "E",
+                    Advanced = true,
+                    MaxValue = 101,
+                    LevelRanges = new SortedList<int, int> { { 1, 6 }, { 6, 12 }, { 12, 18 } },
+                    DefaultValues = new List<int> { 50, 30, 30 }
+                });
             laneclearMenu.AddItem(new MenuItem(laneclearMenu.Name + ".q", "Use Q").SetValue(true));
             laneclearMenu.AddItem(new MenuItem(laneclearMenu.Name + ".e", "Use E").SetValue(true));
-            laneclearMenu.AddItem(new MenuItem(laneclearMenu.Name + ".min", "Min.").SetValue(new Slider(3, 1, 5)));
+            laneclearMenu.AddItem(new MenuItem(laneclearMenu.Name + ".min", "Min. Hits").SetValue(new Slider(3, 1, 5)));
 
             var fleeMenu = Menu.AddSubMenu(new Menu("Flee", Menu.Name + ".flee"));
             fleeMenu.AddItem(new MenuItem(fleeMenu.Name + ".e", "Use E").SetValue(true));
 
             var killstealMenu = Menu.AddSubMenu(new Menu("Killsteal", Menu.Name + ".killsteal"));
             killstealMenu.AddItem(new MenuItem(killstealMenu.Name + ".q", "Use Q").SetValue(true));
-            killstealMenu.AddItem(new MenuItem(killstealMenu.Name + ".range", "Out of Range").SetValue(true));
 
             var miscMenu = Menu.AddSubMenu(new Menu("Misc", Menu.Name + ".miscellaneous"));
-            HeroListManager.AddToMenu(
-                miscMenu.AddSubMenu(new Menu("E Gapcloser", miscMenu.Name + "e-gapcloser")), "e-gapcloser", false, false,
-                true, false);
 
-            Weights.AddItem(new Weights.Item("w-stacks", "W Stacks", 13, true, t => GetWStacks(t) + 1));
+            HeroListManager.AddToMenu(
+                miscMenu.AddSubMenu(new Menu("E Gapcloser", miscMenu.Name + "e-gapcloser")),
+                new HeroListManagerArgs("e-gapcloser")
+                {
+                    IsWhitelist = false,
+                    Allies = false,
+                    Enemies = true,
+                    DefaultValue = false
+                });
+
+            Weights.AddItem(new Weights.Item("w-stacks", "W Stacks", 5, false, t => GetWStacks(t) + 1));
 
             IndicatorManager.AddToMenu(DrawingManager.Menu, true);
             IndicatorManager.Add("Q", hero => Q.IsReady() ? Q.GetDamage(hero, 1) : 0);
@@ -255,12 +313,13 @@ namespace SFXVarus.Champions
                 var target = TargetSelector.GetTarget(E);
                 if (target != null)
                 {
-                    var stacks = W.Level == 0 && Menu.Item(Menu.Name + ".combo.e-stacks").GetValue<Slider>().Value > 0;
-                    if (Menu.Item(Menu.Name + ".combo.e-always").GetValue<bool>() || stacks ||
-                        GetWStacks(target) >= Menu.Item(Menu.Name + ".combo.e-stacks").GetValue<Slider>().Value ||
+                    var stacks = W.Level == 0 &&
+                                 Menu.Item(Menu.Name + ".combo.e-settings.stacks").GetValue<Slider>().Value > 0;
+                    if (Menu.Item(Menu.Name + ".combo.e-settings.always").GetValue<bool>() || stacks ||
+                        GetWStacks(target) >= Menu.Item(Menu.Name + ".combo.e-settings.stacks").GetValue<Slider>().Value ||
                         E.IsKillable(target) ||
                         CPrediction.Circle(E, target, E.GetHitChance("combo")).TotalHits >=
-                        Menu.Item(Menu.Name + ".combo.e-min").GetValue<Slider>().Value)
+                        Menu.Item(Menu.Name + ".combo.e-settings.min").GetValue<Slider>().Value)
                     {
                         ELogic(target, E.GetHitChance("combo"));
                     }
@@ -271,17 +330,17 @@ namespace SFXVarus.Champions
                 var target = TargetSelector.GetTarget((Q.ChargedMaxRange + Q.Width) * 1.1f, Q.DamageType);
                 if (target != null)
                 {
-                    var stacks = W.Level == 0 && Menu.Item(Menu.Name + ".combo.q-stacks").GetValue<Slider>().Value > 0;
-                    if (Q.IsCharging || Menu.Item(Menu.Name + ".combo.q-always").GetValue<bool>() ||
-                        Menu.Item(Menu.Name + ".combo.q-range").GetValue<bool>() &&
-                        !Orbwalking.InAutoAttackRange(target) || stacks ||
-                        GetWStacks(target) >= Menu.Item(Menu.Name + ".combo.q-stacks").GetValue<Slider>().Value ||
+                    var stacks = W.Level == 0 &&
+                                 Menu.Item(Menu.Name + ".combo.q-settings.stacks").GetValue<Slider>().Value > 0;
+                    if (Q.IsCharging || Menu.Item(Menu.Name + ".combo.q-settings.always").GetValue<bool>() ||
+                        target.Distance(Player) > Orbwalking.GetRealAutoAttackRange(target) * 1.2f || stacks ||
+                        GetWStacks(target) >= Menu.Item(Menu.Name + ".combo.q-settings.stacks").GetValue<Slider>().Value ||
                         CPrediction.Line(Q, target, Q.GetHitChance("combo")).TotalHits >=
-                        Menu.Item(Menu.Name + ".combo.q-min").GetValue<Slider>().Value || Q.IsKillable(target))
+                        Menu.Item(Menu.Name + ".combo.q-settings.min").GetValue<Slider>().Value || Q.IsKillable(target))
                     {
                         QLogic(
                             target, Q.GetHitChance("combo"),
-                            Menu.Item(Menu.Name + ".combo.q-fast-cast-min").GetValue<Slider>().Value);
+                            Menu.Item(Menu.Name + ".combo.q-settings.fast-cast-min").GetValue<Slider>().Value);
                     }
                 }
             }
@@ -300,7 +359,7 @@ namespace SFXVarus.Champions
 
         protected override void Harass()
         {
-            if (!ManaManager.Check("harass") && !Q.IsCharging)
+            if (!ResourceManager.Check("harass") && !Q.IsCharging)
             {
                 return;
             }
@@ -309,12 +368,14 @@ namespace SFXVarus.Champions
                 var target = TargetSelector.GetTarget(E);
                 if (target != null)
                 {
-                    var stacks = W.Level == 0 && Menu.Item(Menu.Name + ".harass.e-stacks").GetValue<Slider>().Value > 0;
-                    if (Menu.Item(Menu.Name + ".harass.e-always").GetValue<bool>() || stacks ||
-                        GetWStacks(target) >= Menu.Item(Menu.Name + ".harass.e-stacks").GetValue<Slider>().Value ||
+                    var stacks = W.Level == 0 &&
+                                 Menu.Item(Menu.Name + ".harass.e-settings.stacks").GetValue<Slider>().Value > 0;
+                    if (Menu.Item(Menu.Name + ".harass.e-settings.always").GetValue<bool>() || stacks ||
+                        GetWStacks(target) >=
+                        Menu.Item(Menu.Name + ".harass.e-settings.stacks").GetValue<Slider>().Value ||
                         E.IsKillable(target) ||
                         CPrediction.Circle(E, target, E.GetHitChance("harass")).TotalHits >=
-                        Menu.Item(Menu.Name + ".combo.e-min").GetValue<Slider>().Value)
+                        Menu.Item(Menu.Name + ".combo.e-settings.min").GetValue<Slider>().Value)
                     {
                         ELogic(target, E.GetHitChance("harass"));
                     }
@@ -325,18 +386,19 @@ namespace SFXVarus.Champions
                 var target = TargetSelector.GetTarget((Q.ChargedMaxRange + Q.Width) * 1.1f, Q.DamageType);
                 if (target != null)
                 {
-                    var stacks = W.Level == 0 && Menu.Item(Menu.Name + ".harass.q-stacks").GetValue<Slider>().Value > 0;
-                    if (Q.IsCharging || Menu.Item(Menu.Name + ".harass.q-always").GetValue<bool>() ||
-                        Menu.Item(Menu.Name + ".harass.q-range").GetValue<bool>() &&
-                        !Orbwalking.InAutoAttackRange(target) || stacks ||
-                        GetWStacks(target) >= Menu.Item(Menu.Name + ".harass.q-stacks").GetValue<Slider>().Value ||
+                    var stacks = W.Level == 0 &&
+                                 Menu.Item(Menu.Name + ".harass.q-settings.stacks").GetValue<Slider>().Value > 0;
+                    if (Q.IsCharging || Menu.Item(Menu.Name + ".harass.q-settings.always").GetValue<bool>() ||
+                        target.Distance(Player) > Orbwalking.GetRealAutoAttackRange(target) * 1.2f || stacks ||
+                        GetWStacks(target) >=
+                        Menu.Item(Menu.Name + ".harass.q-settings.stacks").GetValue<Slider>().Value ||
                         Q.IsKillable(target) ||
                         CPrediction.Line(Q, target, Q.GetHitChance("harass")).TotalHits >=
-                        Menu.Item(Menu.Name + ".harass.q-min").GetValue<Slider>().Value)
+                        Menu.Item(Menu.Name + ".harass.q-settings.min").GetValue<Slider>().Value)
                     {
                         QLogic(
                             target, Q.GetHitChance("harass"),
-                            Menu.Item(Menu.Name + ".harass.q-fast-cast-min").GetValue<Slider>().Value);
+                            Menu.Item(Menu.Name + ".harass.q-settings.fast-cast-min").GetValue<Slider>().Value);
                     }
                 }
             }
@@ -559,7 +621,7 @@ namespace SFXVarus.Champions
         {
             var min = Menu.Item(Menu.Name + ".lane-clear.min").GetValue<Slider>().Value;
             if (Menu.Item(Menu.Name + ".lane-clear.q").GetValue<bool>() && Q.IsReady() &&
-                (ManaManager.Check("lane-clear") || Q.IsCharging))
+                (ResourceManager.Check("lane-clear-q") || Q.IsCharging))
             {
                 var minions = MinionManager.GetMinions(
                     Q.ChargedMaxRange, MinionTypes.All, MinionTeam.NotAlly, MinionOrderTypes.MaxHealth);
@@ -580,7 +642,7 @@ namespace SFXVarus.Champions
             }
 
             if (Menu.Item(Menu.Name + ".lane-clear.e").GetValue<bool>() && E.IsReady() &&
-                ManaManager.Check("lane-clear"))
+                ResourceManager.Check("lane-clear-e"))
             {
                 Casting.Farm(E, min);
             }
@@ -601,11 +663,10 @@ namespace SFXVarus.Champions
         {
             if (Menu.Item(Menu.Name + ".killsteal.q").GetValue<bool>() && Q.IsReady())
             {
-                var range = Menu.Item(Menu.Name + ".killsteal.range").GetValue<bool>();
                 var killable =
                     GameObjects.EnemyHeroes.FirstOrDefault(
                         e =>
-                            e.IsValidTarget(Q.Range) && (!range || !Orbwalking.InAutoAttackRange(e)) &&
+                            e.IsValidTarget(Q.Range) && !Orbwalking.InAutoAttackRange(e) &&
                             (QIsKillable(e, 1) || QMaxRangeHit(e) && QIsKillable(e, 2)));
                 if (killable != null)
                 {
@@ -623,7 +684,11 @@ namespace SFXVarus.Champions
         {
             try
             {
-                if (W.Level > 0 && _wStacks != null && _wStacks.GetValue<bool>() && !Player.IsDead)
+                if (!Utils.ShouldDraw())
+                {
+                    return;
+                }
+                if (W.Level > 0 && _wStacks != null && _wStacks.GetValue<bool>())
                 {
                     foreach (var enemy in
                         GameObjects.EnemyHeroes.Where(

@@ -31,6 +31,7 @@ using LeagueSharp.Common;
 using SFXCassiopeia.Interfaces;
 using SFXCassiopeia.Library.Extensions.SharpDX;
 using SFXCassiopeia.Library.Logger;
+using Utils = SFXCassiopeia.Helpers.Utils;
 
 #endregion
 
@@ -176,7 +177,7 @@ namespace SFXCassiopeia.Managers
         {
             try
             {
-                if (Menu == null || _champion.Spells == null || ObjectManager.Player.IsDead)
+                if (Menu == null || _champion.Spells == null || !Utils.ShouldDraw())
                 {
                     return;
                 }

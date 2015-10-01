@@ -34,7 +34,7 @@ using SharpDX;
 
 namespace SFXKalista.SFXTargetSelector
 {
-    internal class Humanizer
+    public class Humanizer
     {
         private static Menu _mainMenu;
         private static float _lastRange;
@@ -48,10 +48,10 @@ namespace SFXKalista.SFXTargetSelector
 
                 _mainMenu.AddItem(
                     new MenuItem(_mainMenu.Name + ".fow", "Target Acquire Delay").SetShared()
-                        .SetValue(new Slider(400, 0, 1500)));
+                        .SetValue(new Slider(350, 0, 1500)));
                 _mainMenu.AddItem(
                     new MenuItem(_mainMenu.Name + ".range", "Range Change Delay").SetShared()
-                        .SetValue(new Slider(400, 0, 1500)));
+                        .SetValue(new Slider(350, 0, 1500)));
             }
             catch (Exception ex)
             {

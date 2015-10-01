@@ -84,10 +84,11 @@ namespace SFXGraves.Wrappers
         //Spells that are not attacks even if they have the "attack" word in their name.
         private static readonly string[] NoAttacks =
         {
-            "jarvanivcataclysmattack", "monkeykingdoubleattack",
-            "shyvanadoubleattack", "shyvanadoubleattackdragon", "zyragraspingplantattack", "zyragraspingplantattack2",
-            "zyragraspingplantattackfire", "zyragraspingplantattack2fire", "viktorpowertransfer", "sivirwattackbounce",
-            "asheqattacknoonhit", "elisespiderlingbasicattack", "heimertyellowbasicattack", "heimertyellowbasicattack2",
+            "volleyattack", "volleyattackwithsound",
+            "jarvanivcataclysmattack", "monkeykingdoubleattack", "shyvanadoubleattack", "shyvanadoubleattackdragon",
+            "zyragraspingplantattack", "zyragraspingplantattack2", "zyragraspingplantattackfire",
+            "zyragraspingplantattack2fire", "viktorpowertransfer", "sivirwattackbounce", "asheqattacknoonhit",
+            "elisespiderlingbasicattack", "heimertyellowbasicattack", "heimertyellowbasicattack2",
             "heimertbluebasicattack", "annietibbersbasicattack", "annietibbersbasicattack2",
             "yorickdecayedghoulbasicattack", "yorickravenousghoulbasicattack", "yorickspectralghoulbasicattack",
             "malzaharvoidlingbasicattack", "malzaharvoidlingbasicattack2", "malzaharvoidlingbasicattack3"
@@ -122,6 +123,7 @@ namespace SFXGraves.Wrappers
             Player = ObjectManager.Player;
             Obj_AI_Base.OnProcessSpellCast += OnProcessSpell;
             GameObject.OnCreate += MissileClient_OnCreate;
+            Obj_AI_Base.OnDoCast += Obj_AI_Base_OnDoCast;
             Spellbook.OnStopCast += SpellbookOnStopCast;
         }
 
@@ -466,13 +468,16 @@ namespace SFXGraves.Wrappers
                             _missileLaunched = false;
 
                             var d = GetRealAutoAttackRange(target) - 65;
-                            if (Player.Distance(target, true) > d * d && !Player.IsMelee)
+                            if (Player.Distance(target, true) > d * d && !IsMelee(Player))
                             {
                                 LastAaTick += 300;
                             }
                         }
 
-                        Player.IssueOrder(GameObjectOrder.AttackUnit, target);
+                        if (!Player.IssueOrder(GameObjectOrder.AttackUnit, target))
+                        {
+                            ResetAutoAttackTimer();
+                        }
 
                         _lastTarget = target;
                         return;
@@ -503,6 +508,26 @@ namespace SFXGraves.Wrappers
             {
                 ResetAutoAttackTimer();
             }
+        }
+
+        private static void Obj_AI_Base_OnDoCast(Obj_AI_Base sender, GameObjectProcessSpellCastEventArgs args)
+        {
+            if (sender.IsMe && IsAutoAttack(args.SData.Name))
+            {
+                if (Game.Ping <= 30)
+                {
+                    Utility.DelayAction.Add(30, () => Obj_AI_Base_OnDoCast_Delayed(sender, args));
+                    return;
+                }
+
+                Obj_AI_Base_OnDoCast_Delayed(sender, args);
+            }
+        }
+
+        private static void Obj_AI_Base_OnDoCast_Delayed(Obj_AI_Base sender, GameObjectProcessSpellCastEventArgs args)
+        {
+            FireAfterAttack(sender, args.Target as AttackableUnit);
+            _missileLaunched = true;
         }
 
         private static void MissileClient_OnCreate(GameObject sender, EventArgs args)
@@ -537,19 +562,13 @@ namespace SFXGraves.Wrappers
                     LastAaTick = Utils.GameTimeTickCount - Game.Ping / 2;
                     _missileLaunched = false;
 
-                    var objBase = spell.Target as Obj_AI_Base;
-                    if (objBase != null)
+                    var baseObj = spell.Target as Obj_AI_Base;
+                    if (baseObj != null)
                     {
-                        if (objBase.IsValid)
+                        if (baseObj.IsValid)
                         {
-                            FireOnTargetSwitch(objBase);
-                            _lastTarget = objBase;
-                        }
-
-                        if (unit.IsMelee)
-                        {
-                            Utility.DelayAction.Add(
-                                (int) (unit.AttackCastDelay * 1000 + 40), () => FireAfterAttack(unit, _lastTarget));
+                            FireOnTargetSwitch(baseObj);
+                            _lastTarget = baseObj;
                         }
                     }
                 }
@@ -593,7 +612,7 @@ namespace SFXGraves.Wrappers
             private readonly string[] _attackleObjectChamps =
             {
                 "Zyra", "Heimerdinger", "Shaco", "Teemo", "Gangplank",
-                "Annie", "Yorick", "Mordekaiser"
+                "Annie", "Yorick", "Mordekaiser", "Malzahar"
             };
 
             private Obj_AI_Base _forcedTarget;
@@ -636,6 +655,8 @@ namespace SFXGraves.Wrappers
                     .ValueChanged += (sender, args) => SetAttackableObject("annie", args.GetNewValue<bool>());
                 attackables.AddItem(new MenuItem("AttackYorick", "Yorick Ghost").SetShared().SetValue(true))
                     .ValueChanged += (sender, args) => SetAttackableObject("yorick", args.GetNewValue<bool>());
+                attackables.AddItem(new MenuItem("AttackMalzahar", "Malzahar Voidling").SetShared().SetValue(true))
+                    .ValueChanged += (sender, args) => SetAttackableObject("malzahar", args.GetNewValue<bool>());
                 attackables.AddItem(new MenuItem("AttackMordekaiser", "Mordekaiser Ghost").SetShared().SetValue(true))
                     .ValueChanged += (sender, args) => SetAttackableObject("mordekaiser", args.GetNewValue<bool>());
                 attackables.AddItem(new MenuItem("AttackClone", "Clones").SetShared().SetValue(true)).ValueChanged +=
@@ -1052,7 +1073,7 @@ namespace SFXGraves.Wrappers
                     !combo, IsAttackableObject("ward"), IsAttackableObject("zyra"), IsAttackableObject("heimerdinger"),
                     IsAttackableObject("clone"), IsAttackableObject("annie"), IsAttackableObject("teemo"),
                     IsAttackableObject("shaco"), IsAttackableObject("gangplank"), IsAttackableObject("yorick"),
-                    IsAttackableObject("mordekaiser"));
+                    IsAttackableObject("malzahar"), IsAttackableObject("mordekaiser"));
             }
 
             private List<Obj_AI_Minion> GetMinions(bool minion,
@@ -1065,6 +1086,7 @@ namespace SFXGraves.Wrappers
                 bool shaco,
                 bool gangplank,
                 bool yorick,
+                bool malzahar,
                 bool mordekaiser)
             {
                 var targets = new List<Obj_AI_Minion>();
@@ -1142,6 +1164,14 @@ namespace SFXGraves.Wrappers
                     if (yorick) //yorick ghouls
                     {
                         if (baseName.Contains("yorick") && baseName.Contains("ghoul"))
+                        {
+                            targets.Add(unit);
+                            continue;
+                        }
+                    }
+                    if (malzahar) //malzahar voidlings
+                    {
+                        if (baseName.Contains("malzaharvoidling"))
                         {
                             targets.Add(unit);
                             continue;

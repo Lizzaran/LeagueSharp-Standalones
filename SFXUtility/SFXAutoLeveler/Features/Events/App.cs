@@ -32,7 +32,7 @@ namespace SFXAutoLeveler.Features.Events
     {
         public override string Name
         {
-            get { return "Events"; }
+            get { return "App"; }
         }
     }
 }

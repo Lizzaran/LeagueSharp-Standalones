@@ -34,7 +34,7 @@ using Orbwalking = SFXGraves.Wrappers.Orbwalking;
 
 namespace SFXGraves.Helpers
 {
-    internal static class Invulnerable
+    public class Invulnerable
     {
         public static readonly HashSet<Item> Items = new HashSet<Item>
         {

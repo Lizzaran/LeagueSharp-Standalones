@@ -32,7 +32,7 @@ namespace SFXPotion.Features.Activators
     {
         public override string Name
         {
-            get { return "Activators"; }
+            get { return "App"; }
         }
     }
 }

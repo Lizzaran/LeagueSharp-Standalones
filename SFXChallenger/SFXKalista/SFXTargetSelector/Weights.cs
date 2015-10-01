@@ -48,47 +48,53 @@ namespace SFXKalista.SFXTargetSelector
         public const int MaxWeight = 20;
         public const int MinMultiplicator = 1;
         public const int MaxMultiplicator = 5;
+        private const string InvertedPrefix = "[i] ";
+        private const float BestTargetSwitchDelay = 0.5f;
         private static Menu _mainMenu;
         private static Menu _weightsMenu;
         private static float _range;
+        private static bool _separated;
+        private static List<Targets.Item> _drawingTargets;
+        private static Targets.Item _bestTarget;
+        private static float _lastBestTargetSwitch;
 
         static Weights()
         {
             try
             {
+                _drawingTargets = new List<Targets.Item>();
                 Items = new HashSet<Item>
                 {
                     new Item(
                         "killable", "AA Killable", 20, false,
                         t => t.Health < ObjectManager.Player.GetAutoAttackDamage(t, true) ? 10 : 0),
                     new Item(
-                        "attack-damage", "Attack Damage", 10, false, delegate(Obj_AI_Hero t)
+                        "attack-damage", "Attack Damage", 15, false, delegate(Obj_AI_Hero t)
                         {
                             var ad = t.FlatPhysicalDamageMod;
                             ad += ad / 100 * (t.Crit * 100) * (t.HasItem(ItemData.Infinity_Edge.Id) ? 2.5f : 2f);
-                            var averageArmor = GameObjects.AllyHeroes.Average(a => a.Armor) *
+                            var averageArmor = GameObjects.AllyHeroes.Select(a => a.Armor).DefaultIfEmpty(0).Average() *
                                                t.PercentArmorPenetrationMod - t.FlatArmorPenetrationMod;
                             return (ad * (100 / (100 + (averageArmor > 0 ? averageArmor : 0)))) * t.AttackSpeedMod;
                         }),
                     new Item(
-                        "ability-power", "Ability Power", 10, false, delegate(Obj_AI_Hero t)
+                        "ability-power", "Ability Power", 15, false, delegate(Obj_AI_Hero t)
                         {
-                            var averageMr = GameObjects.AllyHeroes.Average(a => a.SpellBlock) *
-                                            t.PercentMagicPenetrationMod - t.FlatMagicPenetrationMod;
+                            var averageMr =
+                                GameObjects.AllyHeroes.Select(a => a.SpellBlock).DefaultIfEmpty(0).Average() *
+                                t.PercentMagicPenetrationMod - t.FlatMagicPenetrationMod;
                             return t.FlatMagicDamageMod * (100 / (100 + (averageMr > 0 ? averageMr : 0)));
                         }),
                     new Item(
-                        "low-resists", "[i] Resists", 3, true,
+                        "low-resists", "Resists", 0, true,
                         t =>
                             ObjectManager.Player.FlatPhysicalDamageMod >= ObjectManager.Player.FlatMagicDamageMod
                                 ? t.Armor
                                 : t.SpellBlock),
-                    new Item("low-health", "[i] Health", 17, true, t => t.Health),
+                    new Item("low-health", "Health", 20, true, t => t.Health),
                     new Item(
-                        "short-distance-player", "[i] Distance to Player", 5, true,
-                        t => t.Distance(ObjectManager.Player)),
-                    new Item(
-                        "short-distance-cursor", "[i] Distance to Cursor", 2, true, t => t.Distance(Game.CursorPos)),
+                        "short-distance-player", "Distance to Player", 5, true, t => t.Distance(ObjectManager.Player)),
+                    new Item("short-distance-cursor", "Distance to Cursor", 0, true, t => t.Distance(Game.CursorPos)),
                     new Item(
                         "crowd-control", "Crowd Control", 0, false, delegate(Obj_AI_Hero t)
                         {
@@ -103,7 +109,7 @@ namespace SFXKalista.SFXTargetSelector
                             return buffs.Any() ? buffs.Max(x => x.EndTime) + 1f : 0f;
                         }),
                     new Item(
-                        "gold", "Acquired Gold", 2, false,
+                        "gold", "Acquired Gold", 0, false,
                         t =>
                             (t.MinionsKilled + t.NeutralMinionsKilled) * 22.35f + t.ChampionsKilled * 300f +
                             t.Assists * 95f),
@@ -122,7 +128,7 @@ namespace SFXKalista.SFXTargetSelector
                         })
                 };
 
-                Average = (float) Items.Average(w => w.Weight);
+                Average = (float) Items.Select(w => w.Weight).DefaultIfEmpty(0).Average();
                 MaxRange = 2000f;
             }
             catch (Exception ex)
@@ -169,13 +175,15 @@ namespace SFXKalista.SFXTargetSelector
                 {
                     var localItem = item;
                     _weightsMenu.AddItem(
-                        new MenuItem(_weightsMenu.Name + "." + item.Name, item.DisplayName).SetShared()
+                        new MenuItem(
+                            _weightsMenu.Name + "." + item.Name,
+                            item.Inverted ? InvertedPrefix + item.DisplayName : item.DisplayName).SetShared()
                             .SetValue(new Slider(localItem.Weight, MinWeight, MaxWeight)));
                     _weightsMenu.Item(_weightsMenu.Name + "." + item.Name).ValueChanged +=
                         delegate(object sender, OnValueChangeEventArgs args)
                         {
                             localItem.Weight = args.GetNewValue<Slider>().Value;
-                            Average = (float) Items.Average(w => w.Weight);
+                            Average = (float) Items.Select(w => w.Weight).DefaultIfEmpty(0).Average();
                         };
                     item.Weight = mainMenu.Item(_weightsMenu.Name + "." + item.Name).GetValue<Slider>().Value;
                 }
@@ -196,10 +204,9 @@ namespace SFXKalista.SFXTargetSelector
 
                 drawingWeightsMenu.AddItem(
                     new MenuItem(drawingWeightsMenu.Name + ".simple", "Simple").SetShared().SetValue(false));
-                drawingWeightsMenu.AddItem(
-                    new MenuItem(drawingWeightsMenu.Name + ".advanced", "Advanced").SetShared().SetValue(false));
 
                 Drawing.OnDraw += OnDrawingDraw;
+                Core.OnPreUpdate += OnCorePreUpdate;
             }
             catch (Exception ex)
             {
@@ -207,44 +214,28 @@ namespace SFXKalista.SFXTargetSelector
             }
         }
 
-        private static void OnDrawingDraw(EventArgs args)
+        private static void OnCorePreUpdate(EventArgs args)
         {
             try
             {
-                if (_mainMenu == null)
+                if (_mainMenu == null || TargetSelector.Mode != TargetSelectorModeType.Weights)
                 {
                     return;
                 }
 
                 var highestEnabled =
                     _mainMenu.Item(_mainMenu.Name + ".drawing.weights.highest-target.enabled").GetValue<bool>();
-                var highestRadius =
-                    _mainMenu.Item(_mainMenu.Name + ".drawing.weights.highest-target.radius").GetValue<Slider>().Value;
-                var highestColor =
-                    _mainMenu.Item(_mainMenu.Name + ".drawing.weights.highest-target.color").GetValue<Color>();
-
                 var weightsSimple = _mainMenu.Item(_mainMenu.Name + ".drawing.weights.simple").GetValue<bool>();
-                var weightsAdvanced = _mainMenu.Item(_mainMenu.Name + ".drawing.weights.advanced").GetValue<bool>();
-
-                var circleThickness =
-                    _mainMenu.Item(_mainMenu.Name + ".drawing.circle-thickness").GetValue<Slider>().Value;
-
-                if ((highestEnabled || weightsSimple || weightsAdvanced) &&
-                    TargetSelector.Mode == TargetSelectorModeType.Weights)
+                if (highestEnabled || weightsSimple)
                 {
                     var enemies = Targets.Items.Where(h => h.Hero.IsValidTarget(Range)).ToList();
                     foreach (var weight in Items.Where(w => w.Weight > 0))
                     {
                         UpdateMaxMinValue(weight, enemies, true);
                     }
-                    Targets.Item bestTarget = null;
-                    var bestTargetWeight = float.MinValue;
                     foreach (var target in enemies)
                     {
-                        var onScreen = target.Hero.Position.IsOnScreen();
-                        var position = Drawing.WorldToScreen(target.Hero.Position);
                         var totalWeight = 0f;
-                        var offset = 0f;
                         foreach (var weight in Items.Where(w => w.Weight > 0))
                         {
                             var lastWeight = CalculatedWeight(weight, target, true);
@@ -261,37 +252,65 @@ namespace SFXKalista.SFXTargetSelector
                                         lastWeight += Average * heroMultiplicator;
                                     }
                                 }
-                                if (weightsAdvanced && onScreen)
-                                {
-                                    Drawing.DrawText(
-                                        position.X + target.Hero.BoundingRadius, position.Y - 100 + offset, Color.White,
-                                        lastWeight.ToString("0.0").Replace(",", ".") + " - " + weight.DisplayName);
-                                    offset += 17f;
-                                }
                                 totalWeight += lastWeight;
                             }
                         }
-                        if (weightsSimple && onScreen)
-                        {
-                            Drawing.DrawText(
-                                target.Hero.HPBarPosition.X + 55f, target.Hero.HPBarPosition.Y - 20f, Color.White,
-                                totalWeight.ToString("0.0").Replace(",", "."));
-                        }
-                        if (highestEnabled)
-                        {
-                            if (totalWeight > bestTargetWeight)
-                            {
-                                bestTargetWeight = totalWeight;
-                                bestTarget = target;
-                            }
-                        }
+                        target.SimulatedWeight = totalWeight;
                     }
-                    if (highestEnabled && bestTarget != null && enemies.Count(e => e.Hero.Position.IsOnScreen()) >= 2)
+                    _drawingTargets = enemies.OrderByDescending(t => t.SimulatedWeight).ToList();
+                    if (Game.Time - _lastBestTargetSwitch >= BestTargetSwitchDelay)
                     {
-                        Render.Circle.DrawCircle(
-                            bestTarget.Hero.Position, bestTarget.Hero.BoundingRadius + highestRadius, highestColor,
-                            circleThickness, true);
+                        _bestTarget = _drawingTargets.FirstOrDefault();
+                        _lastBestTargetSwitch = Game.Time;
                     }
+                }
+            }
+            catch (Exception ex)
+            {
+                Global.Logger.AddItem(new LogItem(ex));
+            }
+        }
+
+        private static void OnDrawingDraw(EventArgs args)
+        {
+            try
+            {
+                if (_mainMenu == null || TargetSelector.Mode != TargetSelectorModeType.Weights)
+                {
+                    return;
+                }
+
+                var highestEnabled =
+                    _mainMenu.Item(_mainMenu.Name + ".drawing.weights.highest-target.enabled").GetValue<bool>();
+                var weightsSimple = _mainMenu.Item(_mainMenu.Name + ".drawing.weights.simple").GetValue<bool>();
+
+                if (!highestEnabled && !weightsSimple)
+                {
+                    return;
+                }
+
+                var highestRadius =
+                    _mainMenu.Item(_mainMenu.Name + ".drawing.weights.highest-target.radius").GetValue<Slider>().Value;
+                var highestColor =
+                    _mainMenu.Item(_mainMenu.Name + ".drawing.weights.highest-target.color").GetValue<Color>();
+                var circleThickness =
+                    _mainMenu.Item(_mainMenu.Name + ".drawing.circle-thickness").GetValue<Slider>().Value;
+
+                if (weightsSimple)
+                {
+                    foreach (var target in _drawingTargets.Where(target => target.Hero.Position.IsOnScreen()))
+                    {
+                        Drawing.DrawText(
+                            target.Hero.HPBarPosition.X + 55f, target.Hero.HPBarPosition.Y - 20f, Color.White,
+                            target.SimulatedWeight.ToString("0.0").Replace(",", "."));
+                    }
+                }
+                if (highestEnabled && _bestTarget != null &&
+                    _drawingTargets.Count(e => e.Hero.Position.IsOnScreen()) >= 2)
+                {
+                    Render.Circle.DrawCircle(
+                        _bestTarget.Hero.Position, _bestTarget.Hero.BoundingRadius + highestRadius, highestColor,
+                        circleThickness, true);
                 }
             }
             catch (Exception ex)
@@ -313,19 +332,26 @@ namespace SFXKalista.SFXTargetSelector
 
                 if (_weightsMenu != null)
                 {
+                    if (!_separated)
+                    {
+                        _weightsMenu.AddItem(new MenuItem(_weightsMenu.Name + ".separator", string.Empty));
+                        _separated = true;
+                    }
                     _weightsMenu.AddItem(
-                        new MenuItem(_weightsMenu.Name + "." + item.Name, item.DisplayName).SetValue(
-                            new Slider(item.Weight, MinWeight, MaxWeight)));
+                        new MenuItem(
+                            _weightsMenu.Name + "." + item.Name,
+                            item.Inverted ? InvertedPrefix + item.DisplayName : item.DisplayName).SetValue(
+                                new Slider(item.Weight, MinWeight, MaxWeight)));
                     _weightsMenu.Item(_weightsMenu.Name + "." + item.Name).ValueChanged +=
                         delegate(object sender, OnValueChangeEventArgs args)
                         {
                             item.Weight = args.GetNewValue<Slider>().Value;
-                            Average = (float) Items.Average(w => w.Weight);
+                            Average = (float) Items.Select(w => w.Weight).DefaultIfEmpty(0).Average();
                         };
                     item.Weight = _mainMenu.Item(_weightsMenu.Name + "." + item.Name).GetValue<Slider>().Value;
                 }
 
-                Average = (float) Items.Average(w => w.Weight);
+                Average = (float) Items.Select(w => w.Weight).DefaultIfEmpty(0).Average();
             }
             catch (Exception ex)
             {
