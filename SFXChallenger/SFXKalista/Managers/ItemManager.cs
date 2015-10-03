@@ -408,6 +408,11 @@ namespace SFXKalista.Managers
         {
             try
             {
+                var muramana = ObjectManager.Player.GetSpellSlot("Muramana");
+                if (muramana == SpellSlot.Unknown || !muramana.IsReady())
+                {
+                    return;
+                }
                 var hasBuff = ObjectManager.Player.HasBuff("Muramana");
                 if ((activate && !hasBuff &&
                      (_menu == null ||
@@ -428,11 +433,7 @@ namespace SFXKalista.Managers
                        _menu.Item(_menu.Name + ".muramana.target-health-above").GetValue<Slider>().Value))) ||
                     !activate && hasBuff)
                 {
-                    var muramana = ObjectManager.Player.GetSpellSlot("Muramana");
-                    if (muramana != SpellSlot.Unknown && muramana.IsReady())
-                    {
-                        ObjectManager.Player.Spellbook.CastSpell(muramana);
-                    }
+                    ObjectManager.Player.Spellbook.CastSpell(muramana);
                 }
             }
             catch (Exception ex)

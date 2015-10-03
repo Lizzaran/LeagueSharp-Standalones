@@ -78,8 +78,8 @@ namespace SFXGraves.Champions
             R = new Spell(SpellSlot.R, 1100f);
             R.SetSkillshot(0.25f, 110f, 2100f, false, SkillshotType.SkillshotLine);
 
-            R2 = new Spell(SpellSlot.R, 750f);
-            R2.SetSkillshot(0f, (float) (60 * Math.PI / 180), 1500f, false, SkillshotType.SkillshotCone);
+            R2 = new Spell(SpellSlot.R, 700f);
+            R2.SetSkillshot(0f, 110f, 1500f, false, SkillshotType.SkillshotCone);
 
             _ultimate = new UltimateManager
             {
@@ -112,6 +112,8 @@ namespace SFXGraves.Champions
                     { "W", HitChance.VeryHigh },
                     { "R", HitChance.High }
                 });
+            comboMenu.AddItem(
+                new MenuItem(comboMenu.Name + ".e-mode", "E Mode").SetValue(new StringList(new[] { "Auto", "Cursor" })));
             comboMenu.AddItem(new MenuItem(comboMenu.Name + ".q", "Use Q").SetValue(true));
             comboMenu.AddItem(new MenuItem(comboMenu.Name + ".w", "Use W").SetValue(true));
             comboMenu.AddItem(new MenuItem(comboMenu.Name + ".e", "Use E").SetValue(true));
@@ -242,7 +244,7 @@ namespace SFXGraves.Champions
 
             if (useR)
             {
-                var target = TargetSelector.GetTarget(R.Range + R2.Range, R.DamageType);
+                var target = TargetSelector.GetTarget(R.Range, R.DamageType);
                 if (target != null)
                 {
                     if (!RLogic(UltimateModeType.Combo, target))
@@ -256,8 +258,11 @@ namespace SFXGraves.Champions
                 var target = TargetSelector.GetTarget((E.Range + Player.AttackRange) * 0.9f, E.DamageType);
                 if (target != null)
                 {
-                    var pos = Player.Position.Extend(Game.CursorPos, E.Range);
-                    if (!pos.UnderTurret(true))
+                    var pos = Menu.Item(Menu.Name + ".combo.e-mode").GetValue<StringList>().SelectedIndex == 0
+                        ? GetDashPosition(target)
+                        : Player.Position.Extend(
+                            Game.CursorPos, Math.Min(E.Range, Player.Position.Distance(Game.CursorPos)));
+                    if (pos.Equals(Vector3.Zero) && !pos.UnderTurret(true))
                     {
                         E.Cast(pos);
                     }
@@ -333,7 +338,9 @@ namespace SFXGraves.Champions
 
                 var damage = 0f;
                 var totalMana = 0f;
-                var manaMulti = _ultimate.DamagePercent / 100f;
+                var manaMulti = (GameObjects.EnemyHeroes.Count(x => x.IsValidTarget(2000)) == 1
+                    ? 100
+                    : _ultimate.DamagePercent) / 100f;
 
                 if (r && R.IsReady() && R.IsInRange(target, R.Range + R2.Range))
                 {
@@ -378,17 +385,37 @@ namespace SFXGraves.Champions
                 {
                     castPos = pred.CastPosition;
                     hits.Add(target);
-                    var pos = Player.Position.Extend(pred.CastPosition, Player.Distance(pred.UnitPosition));
+                    var pos = Player.Position.Extend(castPos, Math.Min(Player.Distance(pred.UnitPosition), R.Range));
                     var pos2 = Player.Position.Extend(pos, Player.Distance(pos) + R2.Range);
-                    R2.UpdateSourcePosition(pos, pos);
-                    R2.Delay = Player.Position.Distance(pred.UnitPosition) / R.Speed + 0.1f;
-                    hits.AddRange(
-                        GameObjects.EnemyHeroes.Where(
-                            h =>
-                                h.NetworkId != target.NetworkId && h.IsValidTarget() &&
-                                h.Distance(h.Position, true) < (R.Range + R2.Range) * (R.Range + R2.Range))
-                            .Where(enemy => R2.WillHit(enemy, pos2)));
-                    R2.UpdateSourcePosition();
+
+                    var input = new PredictionInput
+                    {
+                        Range = R2.Range,
+                        Delay = Player.Position.Distance(pred.UnitPosition) / R.Speed + 0.1f,
+                        From = pos,
+                        RangeCheckFrom = pos,
+                        Radius = R2.Width,
+                        Type = SkillshotType.SkillshotLine,
+                        Speed = R2.Speed
+                    };
+
+                    var rect = new Geometry.Polygon.Rectangle(pos, pos2, R2.Width);
+
+                    foreach (var enemy in
+                        GameObjects.EnemyHeroes.Where(e => e.IsValidTarget() && e.NetworkId != target.NetworkId))
+                    {
+                        input.Unit = enemy;
+                        var pred2 = Prediction.GetPrediction(input);
+                        if (!pred2.UnitPosition.Equals(Vector3.Zero))
+                        {
+                            if (
+                                new Geometry.Polygon.Circle(enemy.Position, enemy.BoundingRadius).Points.Any(
+                                    p => rect.IsInside(p)))
+                            {
+                                hits.Add(enemy);
+                            }
+                        }
+                    }
                 }
             }
             catch (Exception ex)
@@ -396,6 +423,63 @@ namespace SFXGraves.Champions
                 Global.Logger.AddItem(new LogItem(ex));
             }
             return new Tuple<int, List<Obj_AI_Hero>, Vector3>(hits.Count, hits, castPos);
+        }
+
+        private Vector3 GetDashPosition(Obj_AI_Hero target)
+        {
+            if (!target.IsMelee && Player.CountEnemiesInRange(E.Range + 500) == 1)
+            {
+                return Game.CursorPos;
+            }
+            var aRc = new Geometry.Polygon.Circle(Player.ServerPosition.To2D(), E.Range);
+            var cursorPos = Game.CursorPos;
+            var targetPosition = target.ServerPosition;
+            var pList = new List<Vector3>();
+            var additionalDistance = (0.2 + Game.Ping / 2000f) * target.MoveSpeed;
+
+            if (!IsDangerousPosition(cursorPos))
+            {
+                return cursorPos;
+            }
+
+            foreach (var p in aRc.Points)
+            {
+                var v3 = new Vector2(p.X, p.Y).To3D();
+
+                if (target.IsFacing(Player))
+                {
+                    if (!IsDangerousPosition(v3) && v3.Distance(targetPosition) < 550)
+                    {
+                        pList.Add(v3);
+                    }
+                }
+                else
+                {
+                    if (!IsDangerousPosition(v3) && v3.Distance(targetPosition) < 550 - additionalDistance)
+                    {
+                        pList.Add(v3);
+                    }
+                }
+            }
+            if (Player.UnderTurret() || Player.CountEnemiesInRange(800) == 1)
+            {
+                return pList.Count > 1 ? pList.OrderBy(el => el.Distance(cursorPos)).FirstOrDefault() : Vector3.Zero;
+            }
+            if (!IsDangerousPosition(cursorPos))
+            {
+                return pList.Count > 1 ? pList.OrderBy(el => el.Distance(cursorPos)).FirstOrDefault() : Vector3.Zero;
+            }
+            return pList.Count > 1
+                ? pList.OrderByDescending(el => el.Distance(cursorPos)).FirstOrDefault()
+                : Vector3.Zero;
+        }
+
+        private bool IsDangerousPosition(Vector3 pos)
+        {
+            return
+                HeroManager.Enemies.Any(
+                    e => e.IsValidTarget() && e.IsVisible || (pos.UnderTurret(true) && !Player.UnderTurret(true))) ||
+                pos.IsWall();
         }
 
         protected override void Harass()

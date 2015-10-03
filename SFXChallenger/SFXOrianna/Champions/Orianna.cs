@@ -85,7 +85,7 @@ namespace SFXOrianna.Champions
         protected override void SetupSpells()
         {
             Q = new Spell(SpellSlot.Q, 825f, DamageType.Magical);
-            Q.SetSkillshot(0.15f, 120f, 1345f, false, SkillshotType.SkillshotCircle);
+            Q.SetSkillshot(0.13f, 115f, 1400f, false, SkillshotType.SkillshotCircle);
 
             W = new Spell(SpellSlot.W, float.MaxValue, DamageType.Magical);
             W.SetSkillshot(0f, 230f, float.MaxValue, false, SkillshotType.SkillshotCircle);
@@ -213,7 +213,7 @@ namespace SFXOrianna.Champions
                     Enemies = true,
                     DefaultValue = false
                 });
-            BestTargetOnlyManager.AddToMenu(qGapcloserMenu, "q-gapcloser");
+            BestTargetOnlyManager.AddToMenu(qGapcloserMenu, "q-gapcloser", true);
 
             ResourceManager.AddToMenu(
                 miscMenu,
@@ -245,7 +245,7 @@ namespace SFXOrianna.Champions
 
             Weights.AddItem(
                 new Weights.Item(
-                    "short-distance-ball", "Distance to Ball", 5, true, hero => hero.Distance(Ball.Position)));
+                    "short-distance-ball", "Distance to Ball", 0, true, hero => hero.Distance(Ball.Position)));
 
             _ballPositionThickness = DrawingManager.Add("Ball Thickness", new Slider(7, 1, 10));
             _ballPositionRadius = DrawingManager.Add("Ball Radius", new Slider(95, 0, 300));
@@ -649,7 +649,9 @@ namespace SFXOrianna.Champions
 
                 var damage = 0f;
                 var totalMana = 0f;
-                var manaMulti = _ultimate.DamagePercent / 100f;
+                var manaMulti = (GameObjects.EnemyHeroes.Count(x => x.IsValidTarget(2000)) == 1
+                    ? 100
+                    : _ultimate.DamagePercent) / 100f;
 
                 if (r && R.IsReady())
                 {
@@ -1402,6 +1404,10 @@ namespace SFXOrianna.Champions
             {
                 try
                 {
+                    if (Game.Time - time > 5)
+                    {
+                        time = Game.Time + 5;
+                    }
                     float value;
                     if (Damages.TryGetValue(time, out value))
                     {
