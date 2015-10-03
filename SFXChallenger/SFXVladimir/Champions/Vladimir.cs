@@ -65,6 +65,26 @@ namespace SFXVladimir.Champions
 
         protected override void OnLoad()
         {
+            GapcloserManager.OnGapcloser += OnEnemyGapcloser;
+            Drawing.OnDraw += OnDrawingDraw;
+            Orbwalking.OnNonKillableMinion += OnOrbwalkingNonKillableMinion;
+        }
+
+        protected override void SetupSpells()
+        {
+            Q = new Spell(SpellSlot.Q, 600f, DamageType.Magical);
+            Q.Range += GameObjects.EnemyHeroes.Select(e => e.BoundingRadius).DefaultIfEmpty(50).Average();
+            Q.SetTargetted(Q.Instance.SData.CastFrame / 30f, Q.Instance.SData.MissileSpeed);
+
+            W = new Spell(SpellSlot.W, 175f, DamageType.Magical);
+
+            E = new Spell(SpellSlot.E, 600f, DamageType.Magical);
+            E.Delay = E.Instance.SData.CastFrame / 30f;
+            E.Width = E.Range;
+
+            R = new Spell(SpellSlot.R, 700f, DamageType.Magical);
+            R.SetSkillshot(0.25f, 175f, float.MaxValue, false, SkillshotType.SkillshotCircle);
+
             _ultimate = new UltimateManager
             {
                 Combo = true,
@@ -77,17 +97,13 @@ namespace SFXVladimir.Champions
                 GapcloserDelay = false,
                 Interrupt = false,
                 InterruptDelay = false,
+                Spells = Spells,
                 DamageCalculation =
                     hero =>
                         CalcComboDamage(
-                            hero, Menu.Item(Menu.Name + ".combo.q").GetValue<bool>() && Q.IsReady(),
-                            Menu.Item(Menu.Name + ".combo.e").GetValue<bool>() && E.IsReady(), true)
+                            hero, Menu.Item(Menu.Name + ".combo.q").GetValue<bool>(),
+                            Menu.Item(Menu.Name + ".combo.e").GetValue<bool>(), true)
             };
-
-            AntiGapcloser.OnEnemyGapcloser += OnEnemyGapcloser;
-            CustomEvents.Unit.OnDash += OnUnitDash;
-            Drawing.OnDraw += OnDrawingDraw;
-            Orbwalking.OnNonKillableMinion += OnOrbwalkingNonKillableMinion;
         }
 
         protected override void AddToMenu()
@@ -143,8 +159,9 @@ namespace SFXVladimir.Champions
 
             var miscMenu = Menu.AddSubMenu(new Menu("Misc", Menu.Name + ".miscellaneous"));
 
-            HeroListManager.AddToMenu(
-                miscMenu.AddSubMenu(new Menu("W Gapcloser", miscMenu.Name + "w-gapcloser")),
+            var wGapcloserMenu = miscMenu.AddSubMenu(new Menu("W Gapcloser", miscMenu.Name + "w-gapcloser"));
+            GapcloserManager.AddToMenu(
+                wGapcloserMenu,
                 new HeroListManagerArgs("w-gapcloser")
                 {
                     IsWhitelist = false,
@@ -152,7 +169,8 @@ namespace SFXVladimir.Champions
                     Enemies = true,
                     DefaultValue = false,
                     Enabled = false
-                });
+                }, true);
+            BestTargetOnlyManager.AddToMenu(wGapcloserMenu, "w-gapcloser");
 
             ResourceManager.AddToMenu(
                 miscMenu,
@@ -193,61 +211,23 @@ namespace SFXVladimir.Champions
             }
         }
 
-        private void OnUnitDash(Obj_AI_Base sender, Dash.DashItem args)
+        private void OnEnemyGapcloser(object sender, GapcloserManagerArgs args)
         {
             try
             {
-                var hero = sender as Obj_AI_Hero;
-                if (!sender.IsEnemy || hero == null)
+                if (args.UniqueId == "w-gapcloser" && W.IsReady() &&
+                    BestTargetOnlyManager.Check("w-gapcloser", W, args.Hero))
                 {
-                    return;
-                }
-                if (HeroListManager.Check("w-gapcloser", hero) && Player.Distance(args.EndPos) <= W.Width * 0.9f &&
-                    W.IsReady())
-                {
-                    W.Cast();
+                    if (args.End.Distance(Player.Position) <= W.Range * 0.9f)
+                    {
+                        W.Cast(args.End);
+                    }
                 }
             }
             catch (Exception ex)
             {
                 Global.Logger.AddItem(new LogItem(ex));
             }
-        }
-
-        private void OnEnemyGapcloser(ActiveGapcloser args)
-        {
-            try
-            {
-                if (!args.Sender.IsEnemy)
-                {
-                    return;
-                }
-                if (HeroListManager.Check("w-gapcloser", args.Sender) && Player.Distance(args.End) <= W.Width * 0.9f &&
-                    W.IsReady())
-                {
-                    W.Cast();
-                }
-            }
-            catch (Exception ex)
-            {
-                Global.Logger.AddItem(new LogItem(ex));
-            }
-        }
-
-        protected override void SetupSpells()
-        {
-            Q = new Spell(SpellSlot.Q, 600f, DamageType.Magical);
-            Q.Range += GameObjects.EnemyHeroes.Select(e => e.BoundingRadius).DefaultIfEmpty(50).Average();
-            Q.SetTargetted(Q.Instance.SData.CastFrame / 30f, Q.Instance.SData.MissileSpeed);
-
-            W = new Spell(SpellSlot.W, 175f, DamageType.Magical);
-
-            E = new Spell(SpellSlot.E, 600f, DamageType.Magical);
-            E.Delay = E.Instance.SData.CastFrame / 30f;
-            E.Width = E.Range;
-
-            R = new Spell(SpellSlot.R, 700f, DamageType.Magical);
-            R.SetSkillshot(0.25f, 175f, float.MaxValue, false, SkillshotType.SkillshotCircle);
         }
 
         protected override void OnPreUpdate() {}
@@ -393,19 +373,20 @@ namespace SFXVladimir.Champions
                     return 0;
                 }
                 float damage = 0;
-                if (q && Q.IsReady())
+                if (q && Q.IsInRange(target))
                 {
                     damage += Q.GetDamage(target) * 2;
                 }
-                if (e)
+                if (e && E.IsInRange(target))
                 {
                     damage += E.GetDamage(target) * 2;
                 }
-                if (r && R.IsReady())
+                if (r && R.IsReady() && R.IsInRange(target, R.Range + R.Width))
                 {
-                    damage += 1.2f;
+                    damage *= 1.2f;
                     damage += R.GetDamage(target);
                 }
+                damage *= 1.1f;
                 damage += ItemManager.CalculateComboDamage(target);
                 damage += SummonerManager.CalculateComboDamage(target);
                 return damage;

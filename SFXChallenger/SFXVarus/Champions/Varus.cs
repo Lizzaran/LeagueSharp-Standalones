@@ -71,6 +71,24 @@ namespace SFXVarus.Champions
 
         protected override void OnLoad()
         {
+            GapcloserManager.OnGapcloser += OnEnemyGapcloser;
+            Drawing.OnDraw += OnDrawingDraw;
+        }
+
+        protected override void SetupSpells()
+        {
+            Q = new Spell(SpellSlot.Q, 925f);
+            Q.SetSkillshot(0.25f, 70f, 1800f, false, SkillshotType.SkillshotLine);
+            Q.SetCharged("VarusQ", "VarusQ", 925, 1700, 1.5f);
+
+            W = new Spell(SpellSlot.W, 0f, DamageType.Magical);
+
+            E = new Spell(SpellSlot.E, 950f);
+            E.SetSkillshot(0.25f, 250f, 1500f, false, SkillshotType.SkillshotCircle);
+
+            R = new Spell(SpellSlot.R, 1075f);
+            R.SetSkillshot(0.25f, 120f, 1950f, false, SkillshotType.SkillshotLine);
+
             _ultimate = new UltimateManager
             {
                 Combo = true,
@@ -83,15 +101,13 @@ namespace SFXVarus.Champions
                 GapcloserDelay = false,
                 Interrupt = false,
                 InterruptDelay = false,
+                Spells = Spells,
                 DamageCalculation =
                     hero =>
                         CalcComboDamage(
-                            hero, Menu.Item(Menu.Name + ".combo.q").GetValue<bool>() && Q.IsReady(),
-                            Menu.Item(Menu.Name + ".combo.e").GetValue<bool>() && E.IsReady(), true)
+                            hero, Menu.Item(Menu.Name + ".combo.q").GetValue<bool>(),
+                            Menu.Item(Menu.Name + ".combo.e").GetValue<bool>(), true)
             };
-
-            AntiGapcloser.OnEnemyGapcloser += OnEnemyGapcloser;
-            Drawing.OnDraw += OnDrawingDraw;
         }
 
         protected override void AddToMenu()
@@ -210,15 +226,17 @@ namespace SFXVarus.Champions
 
             var miscMenu = Menu.AddSubMenu(new Menu("Misc", Menu.Name + ".miscellaneous"));
 
-            HeroListManager.AddToMenu(
-                miscMenu.AddSubMenu(new Menu("E Gapcloser", miscMenu.Name + "e-gapcloser")),
+            var eGapcloserMenu = miscMenu.AddSubMenu(new Menu("E Gapcloser", miscMenu.Name + "e-gapcloser"));
+            GapcloserManager.AddToMenu(
+                eGapcloserMenu,
                 new HeroListManagerArgs("e-gapcloser")
                 {
                     IsWhitelist = false,
                     Allies = false,
                     Enemies = true,
                     DefaultValue = false
-                });
+                }, true);
+            BestTargetOnlyManager.AddToMenu(eGapcloserMenu, "e-gapcloser");
 
             Weights.AddItem(new Weights.Item("w-stacks", "W Stacks", 5, false, t => GetWStacks(t) + 1));
 
@@ -229,21 +247,6 @@ namespace SFXVarus.Champions
             IndicatorManager.Finale();
 
             _wStacks = DrawingManager.Add("W Stacks", true);
-        }
-
-        protected override void SetupSpells()
-        {
-            Q = new Spell(SpellSlot.Q, 925f);
-            Q.SetSkillshot(0.25f, 70f, 1800f, false, SkillshotType.SkillshotLine);
-            Q.SetCharged("VarusQ", "VarusQ", 925, 1700, 1.5f);
-
-            W = new Spell(SpellSlot.W, 0f, DamageType.Magical);
-
-            E = new Spell(SpellSlot.E, 950f);
-            E.SetSkillshot(0.25f, 250f, 1500f, false, SkillshotType.SkillshotCircle);
-
-            R = new Spell(SpellSlot.R, 1075f);
-            R.SetSkillshot(0.25f, 120f, 1950f, false, SkillshotType.SkillshotLine);
         }
 
         protected override void OnPreUpdate() {}
@@ -273,27 +276,25 @@ namespace SFXVarus.Champions
             }
         }
 
-        private void OnEnemyGapcloser(ActiveGapcloser args)
+        private void OnEnemyGapcloser(object sender, GapcloserManagerArgs args)
         {
             try
             {
-                if (!args.Sender.IsEnemy)
+                if (args.UniqueId == "e-gapcloser" && E.IsReady() &&
+                    BestTargetOnlyManager.Check("e-gapcloser", E, args.Hero))
                 {
-                    return;
-                }
-
-                if (HeroListManager.Check("e-gapcloser", args.Sender) && args.End.Distance(Player.Position) < E.Range &&
-                    E.IsReady())
-                {
-                    var target = TargetSelector.GetTarget(E.Range * 0.85f, E.DamageType);
-                    if (target == null || args.Sender.NetworkId.Equals(target.NetworkId))
+                    if (args.End.Distance(Player.Position) <= E.Range)
                     {
                         E.Cast(args.End);
                     }
                 }
-                if (_ultimate.IsActive(UltimateModeType.Gapcloser, args.Sender))
+                if (string.IsNullOrEmpty(args.UniqueId))
                 {
-                    RLogic(UltimateModeType.Gapcloser, HitChance.High, args.Sender);
+                    if (_ultimate.IsActive(UltimateModeType.Gapcloser, args.Hero) &&
+                        BestTargetOnlyManager.Check("r-gapcloser", R, args.Hero))
+                    {
+                        RLogic(UltimateModeType.Gapcloser, HitChance.High, args.Hero);
+                    }
                 }
             }
             catch (Exception ex)
@@ -592,20 +593,41 @@ namespace SFXVarus.Champions
                 {
                     return 0;
                 }
+
                 float damage = 0;
-                if (q)
+                var totalMana = 0f;
+                var manaMulti = _ultimate.DamagePercent / 100f;
+
+                if (r && R.IsReady() && R.IsInRange(target))
                 {
-                    damage += GetQDamage(target, 1);
+                    var rMana = R.ManaCost * manaMulti;
+                    if (totalMana + rMana <= Player.Mana)
+                    {
+                        totalMana += rMana;
+                        damage += R.GetDamage(target);
+                    }
                 }
-                if (e && E.IsReady())
+                if (q && Q.IsReady() && Q.IsInRange(target, Q.ChargedMaxRange))
                 {
-                    damage += E.GetDamage(target);
+                    var qMana = Q.ManaCost * manaMulti;
+                    if (totalMana + qMana <= Player.Mana)
+                    {
+                        totalMana += qMana;
+                        damage += GetQDamage(target, 1);
+                    }
                 }
-                if (r && R.IsReady())
+                if (e && E.IsReady() && E.IsInRange(target, E.Range + E.Width))
                 {
-                    damage += R.GetDamage(target);
+                    var eMana = E.ManaCost * manaMulti;
+                    if (totalMana + eMana <= Player.Mana)
+                    {
+                        damage += E.GetDamage(target);
+                    }
                 }
-                damage += 5f * (float) Player.GetAutoAttackDamage(target);
+                if (Orbwalking.InAutoAttackRange(target))
+                {
+                    damage += 5f * (float) Player.GetAutoAttackDamage(target);
+                }
                 damage += ItemManager.CalculateComboDamage(target);
                 damage += SummonerManager.CalculateComboDamage(target);
                 return damage;

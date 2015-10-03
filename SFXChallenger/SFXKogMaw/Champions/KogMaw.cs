@@ -35,6 +35,7 @@ using SFXKogMaw.Library;
 using SFXKogMaw.Library.Logger;
 using SFXKogMaw.Managers;
 using DamageType = SFXKogMaw.Enumerations.DamageType;
+using Orbwalking = SFXKogMaw.Wrappers.Orbwalking;
 using Spell = SFXKogMaw.Wrappers.Spell;
 using TargetSelector = SFXKogMaw.SFXTargetSelector.TargetSelector;
 using Utils = SFXKogMaw.Helpers.Utils;
@@ -60,7 +61,24 @@ namespace SFXKogMaw.Champions
 
         protected override void OnLoad()
         {
-            AntiGapcloser.OnEnemyGapcloser += OnEnemyGapcloser;
+            GapcloserManager.OnGapcloser += OnEnemyGapcloser;
+        }
+
+        protected override void SetupSpells()
+        {
+            Q = new Spell(SpellSlot.Q, 980f, DamageType.Magical);
+            Q.SetSkillshot(0.25f, 50f, 2000f, true, SkillshotType.SkillshotLine);
+
+            W = new Spell(
+                SpellSlot.W,
+                Player.AttackRange + Player.BoundingRadius +
+                GameObjects.EnemyHeroes.Select(e => e.BoundingRadius).DefaultIfEmpty(50).Average(), DamageType.Magical);
+
+            E = new Spell(SpellSlot.E, 1200f, DamageType.Magical);
+            E.SetSkillshot(0.25f, 120f, 1400f, false, SkillshotType.SkillshotLine);
+
+            R = new Spell(SpellSlot.R, 1200f, DamageType.Magical);
+            R.SetSkillshot(1.5f, 200f, float.MaxValue, false, SkillshotType.SkillshotCircle);
         }
 
         protected override void AddToMenu()
@@ -135,18 +153,21 @@ namespace SFXKogMaw.Champions
 
             var miscMenu = Menu.AddSubMenu(new Menu("Misc", Menu.Name + ".miscellaneous"));
 
-            HeroListManager.AddToMenu(
-                miscMenu.AddSubMenu(new Menu("E Gapcloser", miscMenu.Name + "e-gapcloser")),
+            var eGapcloserMenu = miscMenu.AddSubMenu(new Menu("E Gapcloser", miscMenu.Name + "e-gapcloser"));
+            GapcloserManager.AddToMenu(
+                eGapcloserMenu,
                 new HeroListManagerArgs("e-gapcloser")
                 {
                     IsWhitelist = false,
                     Allies = false,
                     Enemies = true,
                     DefaultValue = false
-                });
+                }, true);
+            BestTargetOnlyManager.AddToMenu(eGapcloserMenu, "e-gapcloser");
 
+            var rImmobileMenu = miscMenu.AddSubMenu(new Menu("R Immobile", miscMenu.Name + "r-immobile"));
             HeroListManager.AddToMenu(
-                miscMenu.AddSubMenu(new Menu("R Immobile", miscMenu.Name + "r-immobile")),
+                rImmobileMenu,
                 new HeroListManagerArgs("r-immobile")
                 {
                     IsWhitelist = false,
@@ -154,9 +175,11 @@ namespace SFXKogMaw.Champions
                     Enemies = true,
                     DefaultValue = false
                 });
+            BestTargetOnlyManager.AddToMenu(rImmobileMenu, "r-immobile");
 
-            HeroListManager.AddToMenu(
-                miscMenu.AddSubMenu(new Menu("R Gapcloser", miscMenu.Name + "r-gapcloser")),
+            var rGapcloserMenu = miscMenu.AddSubMenu(new Menu("R Gapcloser", miscMenu.Name + "r-gapcloser"));
+            GapcloserManager.AddToMenu(
+                rGapcloserMenu,
                 new HeroListManagerArgs("r-gapcloser")
                 {
                     IsWhitelist = false,
@@ -164,6 +187,7 @@ namespace SFXKogMaw.Champions
                     Enemies = true,
                     DefaultValue = false
                 });
+            BestTargetOnlyManager.AddToMenu(rGapcloserMenu, "r-gapcloser");
 
             miscMenu.AddItem(new MenuItem(miscMenu.Name + ".r-max", "R Max. Stacks").SetValue(new Slider(5, 1, 10)));
 
@@ -175,23 +199,6 @@ namespace SFXKogMaw.Champions
             IndicatorManager.Finale();
         }
 
-        protected override void SetupSpells()
-        {
-            Q = new Spell(SpellSlot.Q, 980f, DamageType.Magical);
-            Q.SetSkillshot(0.25f, 50f, 2000f, true, SkillshotType.SkillshotLine);
-
-            W = new Spell(
-                SpellSlot.W,
-                Player.AttackRange + Player.BoundingRadius +
-                GameObjects.EnemyHeroes.Select(e => e.BoundingRadius).DefaultIfEmpty(50).Average(), DamageType.Magical);
-
-            E = new Spell(SpellSlot.E, 1200f, DamageType.Magical);
-            E.SetSkillshot(0.25f, 120f, 1400f, false, SkillshotType.SkillshotLine);
-
-            R = new Spell(SpellSlot.R, 1200f, DamageType.Magical);
-            R.SetSkillshot(1.5f, 200f, float.MaxValue, false, SkillshotType.SkillshotCircle);
-        }
-
         protected override void OnPreUpdate() {}
 
         protected override void OnPostUpdate()
@@ -200,7 +207,9 @@ namespace SFXKogMaw.Champions
             {
                 var target =
                     GameObjects.EnemyHeroes.FirstOrDefault(
-                        t => t.IsValidTarget(R.Range) && HeroListManager.Check("r-immobile", t) && Utils.IsImmobile(t));
+                        t =>
+                            t.IsValidTarget(R.Range) && HeroListManager.Check("r-immobile", t) &&
+                            BestTargetOnlyManager.Check("r-immobile", R, t) && Utils.IsImmobile(t));
                 if (target != null)
                 {
                     Casting.SkillShot(target, R, HitChance.VeryHigh);
@@ -221,22 +230,26 @@ namespace SFXKogMaw.Champions
             }
         }
 
-        private void OnEnemyGapcloser(ActiveGapcloser args)
+        private void OnEnemyGapcloser(object sender, GapcloserManagerArgs args)
         {
             try
             {
-                if (!args.Sender.IsEnemy)
+                if (args.UniqueId == "e-gapcloser" && E.IsReady() &&
+                    BestTargetOnlyManager.Check("e-gapcloser", E, args.Hero))
                 {
-                    return;
+                    if (args.End.Distance(Player.Position) <= E.Range)
+                    {
+                        E.Cast(args.End);
+                    }
                 }
-                if (HeroListManager.Check("e-gapcloser", args.Sender) && E.IsInRange(args.End))
-                {
-                    E.Cast(args.End);
-                }
-                if (HeroListManager.Check("r-gapcloser", args.Sender) && R.IsInRange(args.End) &&
+                if (args.UniqueId == "r-gapcloser" && R.IsReady() &&
+                    BestTargetOnlyManager.Check("r-gapcloser", R, args.Hero) &&
                     Menu.Item(Menu.Name + ".miscellaneous.r-max").GetValue<Slider>().Value > GetRBuffCount())
                 {
-                    R.Cast(args.End);
+                    if (args.End.Distance(Player.Position) <= R.Range)
+                    {
+                        R.Cast(args.End);
+                    }
                 }
             }
             catch (Exception ex)

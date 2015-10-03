@@ -27,7 +27,7 @@ using System.Collections.Generic;
 using System.Linq;
 using LeagueSharp;
 using LeagueSharp.Common;
-using SFXGraves.Events;
+using SFXGraves.Args;
 using SFXGraves.Library;
 using SFXGraves.Library.Extensions.NET;
 using SFXGraves.Library.Logger;
@@ -106,9 +106,9 @@ namespace SFXGraves.Managers
             }
         }
 
-        public static event EventHandler<InitiatorArgs> OnInitiator;
-        public static event EventHandler<InitiatorArgs> OnAllyInitiator;
-        public static event EventHandler<InitiatorArgs> OnEnemyInitiator;
+        public static event EventHandler<InitiatorManagerArgs> OnInitiator;
+        public static event EventHandler<InitiatorManagerArgs> OnAllyInitiator;
+        public static event EventHandler<InitiatorManagerArgs> OnEnemyInitiator;
 
         private static void OnObjAiBaseProcessSpellCast(Obj_AI_Base sender, GameObjectProcessSpellCastEventArgs args)
         {
@@ -129,7 +129,7 @@ namespace SFXGraves.Managers
                     if (_menu == null ||
                         _menu.Item(_menu.Name + "." + initiator.Hero + "." + initiator.Slot).GetValue<bool>())
                     {
-                        var eventArgs = new InitiatorArgs(
+                        var eventArgs = new InitiatorManagerArgs(
                             hero, args.Start, args.Target != null ? args.Target.Position : args.End, initiator.Range);
                         OnInitiator.RaiseEvent(null, eventArgs);
                         (hero.IsAlly ? OnAllyInitiator : OnEnemyInitiator).RaiseEvent(null, eventArgs);

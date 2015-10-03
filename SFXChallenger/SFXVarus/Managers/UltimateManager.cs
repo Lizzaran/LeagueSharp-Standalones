@@ -31,6 +31,7 @@ using SFXVarus.Args;
 using SFXVarus.Enumerations;
 using SFXVarus.Library;
 using SFXVarus.Library.Logger;
+using Spell = SFXVarus.Wrappers.Spell;
 
 #endregion
 
@@ -50,10 +51,22 @@ namespace SFXVarus.Managers
         public bool GapcloserDelay { get; set; }
         public bool Interrupt { get; set; }
         public bool InterruptDelay { get; set; }
+        public List<Spell> Spells { get; set; }
 
         public int DamagePercent
         {
-            get { return _damagePercent; }
+            get
+            {
+                if (_menu != null)
+                {
+                    var item = _menu.Item(_menu.Name + ".ultimate.damage-percent");
+                    if (item != null)
+                    {
+                        return item.GetValue<Slider>().Value;
+                    }
+                }
+                return _damagePercent;
+            }
             set { _damagePercent = Math.Max(1, Math.Min(value, 200)); }
         }
 
@@ -200,6 +213,7 @@ namespace SFXVarus.Managers
                                 DontSave = false,
                                 Enabled = true
                             });
+                        BestTargetOnlyManager.AddToMenu(autoGapcloserMenu, "r-gapcloser");
                     }
                     uAutoMenu.AddItem(new MenuItem(uAutoMenu.Name + ".min", "Min. Hits").SetValue(new Slider(3, 1, 5)));
                     if (DamageCalculation != null)
@@ -235,7 +249,7 @@ namespace SFXVarus.Managers
 
                 var uSingleMenu = ultimateMenu.AddSubMenu(new Menu("Single Target", ultimateMenu.Name + ".single"));
                 uSingleMenu.AddItem(
-                    new MenuItem(uSingleMenu.Name + ".min-health", "Min. Target Health %").SetValue(new Slider(20)));
+                    new MenuItem(uSingleMenu.Name + ".min-health", "Min. Target Health %").SetValue(new Slider(10)));
                 uSingleMenu.AddItem(
                     new MenuItem(uSingleMenu.Name + ".max-allies", "Max. Allies in Range").SetValue(new Slider(3, 0, 4)));
                 uSingleMenu.AddItem(
@@ -384,7 +398,15 @@ namespace SFXVarus.Managers
                 if (ShouldSingle(mode))
                 {
                     var minHealth = _menu.Item(_menu.Name + ".ultimate.single.min-health").GetValue<Slider>().Value;
-
+                    if (Spells != null &&
+                        !Spells.Any(
+                            s =>
+                                s.Slot != SpellSlot.R && s.IsReady() && s.IsInRange(target) && s.GetDamage(target) > 10 &&
+                                Math.Abs(s.Speed - float.MaxValue) < 1 ||
+                                s.From.Distance(target.ServerPosition) / s.Speed + s.Delay <= 1.0f))
+                    {
+                        minHealth = 0;
+                    }
                     if (target.HealthPercent < minHealth)
                     {
                         return false;

@@ -31,7 +31,6 @@ using LeagueSharp.Common;
 using SFXOrianna.Abstracts;
 using SFXOrianna.Args;
 using SFXOrianna.Enumerations;
-using SFXOrianna.Events;
 using SFXOrianna.Helpers;
 using SFXOrianna.Library;
 using SFXOrianna.Library.Extensions.NET;
@@ -74,6 +73,29 @@ namespace SFXOrianna.Champions
 
         protected override void OnLoad()
         {
+            Interrupter2.OnInterruptableTarget += OnInterruptableTarget;
+            InitiatorManager.OnAllyInitiator += OnAllyInitiator;
+            Spellbook.OnCastSpell += OnSpellbookCastSpell;
+            Ball.OnPositionChange += OnBallPositionChange;
+            GapcloserManager.OnGapcloser += OnEnemyGapcloser;
+            Drawing.OnDraw += OnDrawingDraw;
+            Obj_AI_Base.OnProcessSpellCast += OnObjAiBaseProcessSpellCast;
+        }
+
+        protected override void SetupSpells()
+        {
+            Q = new Spell(SpellSlot.Q, 825f, DamageType.Magical);
+            Q.SetSkillshot(0.15f, 120f, 1345f, false, SkillshotType.SkillshotCircle);
+
+            W = new Spell(SpellSlot.W, float.MaxValue, DamageType.Magical);
+            W.SetSkillshot(0f, 230f, float.MaxValue, false, SkillshotType.SkillshotCircle);
+
+            E = new Spell(SpellSlot.E, 1095f, DamageType.Magical);
+            E.SetSkillshot(0.25f, 125f, 1700f, false, SkillshotType.SkillshotLine);
+
+            R = new Spell(SpellSlot.R, float.MaxValue, DamageType.Magical);
+            R.SetSkillshot(0.75f, 375f, float.MaxValue, false, SkillshotType.SkillshotCircle);
+
             _ultimate = new UltimateManager
             {
                 Combo = true,
@@ -86,22 +108,14 @@ namespace SFXOrianna.Champions
                 GapcloserDelay = false,
                 Interrupt = true,
                 InterruptDelay = false,
+                Spells = Spells,
                 DamageCalculation =
                     hero =>
                         CalcComboDamage(
-                            hero, Menu.Item(Menu.Name + ".combo.q").GetValue<bool>() && Q.IsReady(),
-                            Menu.Item(Menu.Name + ".combo.w").GetValue<bool>() && W.IsReady(),
-                            Menu.Item(Menu.Name + ".combo.e").GetValue<bool>() && E.IsReady(), true)
+                            hero, Menu.Item(Menu.Name + ".combo.q").GetValue<bool>(),
+                            Menu.Item(Menu.Name + ".combo.w").GetValue<bool>(),
+                            Menu.Item(Menu.Name + ".combo.e").GetValue<bool>(), true)
             };
-
-            Interrupter2.OnInterruptableTarget += OnInterruptableTarget;
-            InitiatorManager.OnAllyInitiator += OnAllyInitiator;
-            Spellbook.OnCastSpell += OnSpellbookCastSpell;
-            Ball.OnPositionChange += OnBallPositionChange;
-            AntiGapcloser.OnEnemyGapcloser += OnEnemyGapcloser;
-            CustomEvents.Unit.OnDash += OnUnitDash;
-            Drawing.OnDraw += OnDrawingDraw;
-            Obj_AI_Base.OnProcessSpellCast += OnObjAiBaseProcessSpellCast;
         }
 
         protected override void AddToMenu()
@@ -188,8 +202,10 @@ namespace SFXOrianna.Champions
             shieldMenu.AddItem(new MenuItem(shieldMenu.Name + ".enabled", "Enabled").SetValue(true));
 
             var miscMenu = Menu.AddSubMenu(new Menu("Misc", Menu.Name + ".miscellaneous"));
-            HeroListManager.AddToMenu(
-                miscMenu.AddSubMenu(new Menu("Q Gapcloser", miscMenu.Name + "q-gapcloser")),
+
+            var qGapcloserMenu = miscMenu.AddSubMenu(new Menu("Q Gapcloser", miscMenu.Name + "q-gapcloser"));
+            GapcloserManager.AddToMenu(
+                qGapcloserMenu,
                 new HeroListManagerArgs("q-gapcloser")
                 {
                     IsWhitelist = false,
@@ -197,6 +213,8 @@ namespace SFXOrianna.Champions
                     Enemies = true,
                     DefaultValue = false
                 });
+            BestTargetOnlyManager.AddToMenu(qGapcloserMenu, "q-gapcloser");
+
             ResourceManager.AddToMenu(
                 miscMenu,
                 new ResourceManagerArgs(
@@ -312,7 +330,8 @@ namespace SFXOrianna.Champions
                 if (circle.Active)
                 {
                     Render.Circle.DrawCircle(
-                        Ball.Position, _ballPositionRadius.GetValue<Slider>().Value, circle.Color,
+                        (Ball.Hero != null ? Ball.Hero.Position : Ball.Position),
+                        _ballPositionRadius.GetValue<Slider>().Value, circle.Color,
                         _ballPositionThickness.GetValue<Slider>().Value, true);
                 }
             }
@@ -322,55 +341,24 @@ namespace SFXOrianna.Champions
             }
         }
 
-        private void OnUnitDash(Obj_AI_Base sender, Dash.DashItem args)
+        private void OnEnemyGapcloser(object sender, GapcloserManagerArgs args)
         {
             try
             {
-                var hero = sender as Obj_AI_Hero;
-                if (!sender.IsEnemy || hero == null)
+                if (args.UniqueId == "q-gapcloser" && Q.IsReady() &&
+                    BestTargetOnlyManager.Check("q-gapcloser", Q, args.Hero))
                 {
-                    return;
-                }
-                var endTick = Game.Time - Game.Ping / 2000f + (args.EndPos.Distance(args.StartPos) / args.Speed);
-                if (HeroListManager.Check("q-gapcloser", hero) && Ball.Position.Distance(args.EndPos.To3D()) <= Q.Range &&
-                    Q.IsReady())
-                {
-                    var target = TargetSelector.GetTarget(Q.Range * 0.85f, Q.DamageType);
-                    if (target == null || sender.NetworkId.Equals(target.NetworkId))
+                    if (args.End.Distance(Player.Position) <= Q.Range)
                     {
-                        var delay = (int) (endTick - Game.Time - Q.Delay - 0.1f);
+                        var delay = (int) (args.EndTime - Game.Time - Q.Delay - 0.1f);
                         if (delay > 0)
                         {
-                            Utility.DelayAction.Add(delay * 1000, () => Q.Cast(args.EndPos));
+                            Utility.DelayAction.Add(delay * 1000, () => Q.Cast(args.End));
                         }
                         else
                         {
-                            Q.Cast(args.EndPos);
+                            Q.Cast(args.End);
                         }
-                    }
-                }
-            }
-            catch (Exception ex)
-            {
-                Global.Logger.AddItem(new LogItem(ex));
-            }
-        }
-
-        private void OnEnemyGapcloser(ActiveGapcloser args)
-        {
-            try
-            {
-                if (!args.Sender.IsEnemy)
-                {
-                    return;
-                }
-                if (HeroListManager.Check("q-gapcloser", args.Sender) && Ball.Position.Distance(args.End) <= Q.Range &&
-                    Q.IsReady())
-                {
-                    var target = TargetSelector.GetTarget(Q.Range * 0.85f, Q.DamageType);
-                    if (target == null || args.Sender.NetworkId.Equals(target.NetworkId))
-                    {
-                        Q.Cast(args.End);
                     }
                 }
             }
@@ -398,7 +386,7 @@ namespace SFXOrianna.Champions
             }
         }
 
-        private void OnAllyInitiator(object sender, InitiatorArgs args)
+        private void OnAllyInitiator(object sender, InitiatorManagerArgs args)
         {
             try
             {
@@ -437,21 +425,6 @@ namespace SFXOrianna.Champions
             {
                 Global.Logger.AddItem(new LogItem(ex));
             }
-        }
-
-        protected override void SetupSpells()
-        {
-            Q = new Spell(SpellSlot.Q, 825f, DamageType.Magical);
-            Q.SetSkillshot(0.15f, 120f, 1345f, false, SkillshotType.SkillshotCircle);
-
-            W = new Spell(SpellSlot.W, float.MaxValue, DamageType.Magical);
-            W.SetSkillshot(0f, 230f, float.MaxValue, false, SkillshotType.SkillshotCircle);
-
-            E = new Spell(SpellSlot.E, 1095f, DamageType.Magical);
-            E.SetSkillshot(0.25f, 125f, 1700f, false, SkillshotType.SkillshotLine);
-
-            R = new Spell(SpellSlot.R, float.MaxValue, DamageType.Magical);
-            R.SetSkillshot(0.75f, 375f, float.MaxValue, false, SkillshotType.SkillshotCircle);
         }
 
         protected override void OnPreUpdate()
@@ -673,26 +646,59 @@ namespace SFXOrianna.Champions
                 {
                     return 0;
                 }
-                float damage = 0;
-                damage += Q.GetDamage(target);
-                if (q && (Q.IsReady() || Q.Instance.CooldownExpires - Game.Time <= 2))
-                {
-                    damage += Q.GetDamage(target);
-                }
-                if (w && (W.IsReady() || W.Instance.CooldownExpires - Game.Time <= 2))
-                {
-                    damage += W.GetDamage(target);
-                }
-                if (e)
-                {
-                    damage += E.GetDamage(target) * 0.75f;
-                }
+
+                var damage = 0f;
+                var totalMana = 0f;
+                var manaMulti = _ultimate.DamagePercent / 100f;
+
                 if (r && R.IsReady())
                 {
-                    damage += R.GetDamage(target);
+                    var rMana = R.ManaCost * manaMulti;
+                    if (totalMana + rMana <= Player.Mana)
+                    {
+                        totalMana += rMana;
+                        damage += R.GetDamage(target);
+                    }
                 }
-                damage += 2 * (float) Player.GetAutoAttackDamage(target, true);
-                damage *= 1.5f;
+
+                if (w && W.IsReady(2000))
+                {
+                    var wMana = W.ManaCost * manaMulti;
+                    if (totalMana + wMana <= Player.Mana)
+                    {
+                        totalMana += wMana;
+                        damage += W.GetDamage(target);
+                    }
+                }
+
+                var qMana = Q.ManaCost * manaMulti;
+                if (totalMana + qMana <= Player.Mana)
+                {
+                    totalMana += qMana;
+                    damage += Q.GetDamage(target);
+                    if (q && Q.IsReady(2000))
+                    {
+                        if (totalMana + qMana <= Player.Mana)
+                        {
+                            totalMana += qMana;
+                            damage += Q.GetDamage(target);
+                        }
+                    }
+                }
+
+                if (e && E.IsReady())
+                {
+                    var eMana = E.ManaCost * manaMulti;
+                    if (totalMana + eMana <= Player.Mana)
+                    {
+                        damage += E.GetDamage(target) * 0.75f;
+                    }
+                }
+                if (target.Distance(Player) <= Orbwalking.GetRealAutoAttackRange(target) * 1.2f)
+                {
+                    damage += 2 * (float) Player.GetAutoAttackDamage(target, true);
+                }
+                damage *= 1.1f;
                 damage += ItemManager.CalculateComboDamage(target);
                 damage += SummonerManager.CalculateComboDamage(target);
                 return damage;

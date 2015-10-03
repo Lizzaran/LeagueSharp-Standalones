@@ -43,7 +43,6 @@ using MinionTeam = SFXCassiopeia.Library.MinionTeam;
 using MinionTypes = SFXCassiopeia.Library.MinionTypes;
 using Orbwalking = SFXCassiopeia.Wrappers.Orbwalking;
 using Spell = SFXCassiopeia.Wrappers.Spell;
-using TargetSelector = SFXCassiopeia.SFXTargetSelector.TargetSelector;
 using Utils = SFXCassiopeia.Helpers.Utils;
 
 #endregion
@@ -73,9 +72,24 @@ namespace SFXCassiopeia.Champions
         protected override void OnLoad()
         {
             Orbwalking.BeforeAttack += OnOrbwalkingBeforeAttack;
-            AntiGapcloser.OnEnemyGapcloser += OnEnemyGapcloser;
             Interrupter2.OnInterruptableTarget += OnInterruptableTarget;
-            CustomEvents.Unit.OnDash += OnUnitDash;
+            GapcloserManager.OnGapcloser += OnEnemyGapcloser;
+        }
+
+        protected override void SetupSpells()
+        {
+            Q = new Spell(SpellSlot.Q, 850f, DamageType.Magical);
+            Q.SetSkillshot(0.4f, 60f, float.MaxValue, false, SkillshotType.SkillshotCircle);
+
+            W = new Spell(SpellSlot.W, 850f, DamageType.Magical);
+            W.SetSkillshot(0.7f, 125f, 2500f, false, SkillshotType.SkillshotCircle);
+
+            E = new Spell(SpellSlot.E, 700f, DamageType.Magical);
+            E.SetTargetted(0.2f, 1700f);
+            E.Collision = true;
+
+            R = new Spell(SpellSlot.R, 825f, DamageType.Magical);
+            R.SetSkillshot(0.8f, (float) (80 * Math.PI / 180), float.MaxValue, false, SkillshotType.SkillshotCone);
 
             _ultimate = new UltimateManager
             {
@@ -89,12 +103,13 @@ namespace SFXCassiopeia.Champions
                 GapcloserDelay = false,
                 Interrupt = true,
                 InterruptDelay = false,
+                Spells = Spells,
                 DamageCalculation =
                     hero =>
                         CalcComboDamage(
-                            hero, Menu.Item(Menu.Name + ".combo.q").GetValue<bool>() && Q.IsReady(),
-                            Menu.Item(Menu.Name + ".combo.w").GetValue<bool>() && W.IsReady(),
-                            Menu.Item(Menu.Name + ".combo.e").GetValue<bool>() && E.IsReady(), true)
+                            hero, Menu.Item(Menu.Name + ".combo.q").GetValue<bool>(),
+                            Menu.Item(Menu.Name + ".combo.w").GetValue<bool>(),
+                            Menu.Item(Menu.Name + ".combo.e").GetValue<bool>(), true)
             };
         }
 
@@ -180,8 +195,9 @@ namespace SFXCassiopeia.Champions
             var miscMenu = Menu.AddSubMenu(new Menu("Misc", Menu.Name + ".miscellaneous"));
             DelayManager.AddToMenu(miscMenu, "e-delay", "E", 250, 0, 1000);
 
-            HeroListManager.AddToMenu(
-                miscMenu.AddSubMenu(new Menu("Q Gapcloser", miscMenu.Name + "q-gapcloser")),
+            var qGapcloserMenu = miscMenu.AddSubMenu(new Menu("Q Gapcloser", miscMenu.Name + "q-gapcloser"));
+            GapcloserManager.AddToMenu(
+                qGapcloserMenu,
                 new HeroListManagerArgs("q-gapcloser")
                 {
                     IsWhitelist = false,
@@ -189,8 +205,11 @@ namespace SFXCassiopeia.Champions
                     Enemies = true,
                     DefaultValue = false
                 });
+            BestTargetOnlyManager.AddToMenu(qGapcloserMenu, "q-gapcloser");
+
+            var qFleeingMenu = miscMenu.AddSubMenu(new Menu("Q Fleeing", miscMenu.Name + "q-fleeing"));
             HeroListManager.AddToMenu(
-                miscMenu.AddSubMenu(new Menu("Q Fleeing", miscMenu.Name + "q-fleeing")),
+                qFleeingMenu,
                 new HeroListManagerArgs("q-fleeing")
                 {
                     IsWhitelist = false,
@@ -198,17 +217,23 @@ namespace SFXCassiopeia.Champions
                     Enemies = true,
                     DefaultValue = false
                 });
-            HeroListManager.AddToMenu(
-                miscMenu.AddSubMenu(new Menu("W Gapcloser", miscMenu.Name + "w-gapcloser")),
+            BestTargetOnlyManager.AddToMenu(qFleeingMenu, "q-fleeing");
+
+            var wGapcloserMenu = miscMenu.AddSubMenu(new Menu("W Gapcloser", miscMenu.Name + "w-gapcloser"));
+            GapcloserManager.AddToMenu(
+                wGapcloserMenu,
                 new HeroListManagerArgs("w-gapcloser")
                 {
                     IsWhitelist = false,
                     Allies = false,
                     Enemies = true,
                     DefaultValue = false
-                });
+                }, true);
+            BestTargetOnlyManager.AddToMenu(wGapcloserMenu, "w-gapcloser");
+
+            var wImmobileMenu = miscMenu.AddSubMenu(new Menu("W Immobile", miscMenu.Name + "w-immobile"));
             HeroListManager.AddToMenu(
-                miscMenu.AddSubMenu(new Menu("W Immobile", miscMenu.Name + "w-immobile")),
+                wImmobileMenu,
                 new HeroListManagerArgs("w-immobile")
                 {
                     IsWhitelist = false,
@@ -216,8 +241,11 @@ namespace SFXCassiopeia.Champions
                     Enemies = true,
                     DefaultValue = false
                 });
+            BestTargetOnlyManager.AddToMenu(wImmobileMenu, "w-immobile");
+
+            var wFleeingMenu = miscMenu.AddSubMenu(new Menu("W Fleeing", miscMenu.Name + "w-fleeing"));
             HeroListManager.AddToMenu(
-                miscMenu.AddSubMenu(new Menu("W Fleeing", miscMenu.Name + "w-fleeing")),
+                wFleeingMenu,
                 new HeroListManagerArgs("w-fleeing")
                 {
                     IsWhitelist = false,
@@ -225,6 +253,7 @@ namespace SFXCassiopeia.Champions
                     Enemies = true,
                     DefaultValue = false
                 });
+            BestTargetOnlyManager.AddToMenu(wFleeingMenu, "w-fleeing");
 
             R.Range = Menu.Item(Menu.Name + ".ultimate.range").GetValue<Slider>().Value;
             DrawingManager.Update(
@@ -240,22 +269,6 @@ namespace SFXCassiopeia.Champions
 
             Weights.AddItem(
                 new Weights.Item("poison-time", "Poison Time", 5, false, hero => GetPoisonBuffEndTime(hero) + 1));
-        }
-
-        protected override void SetupSpells()
-        {
-            Q = new Spell(SpellSlot.Q, 850f, DamageType.Magical);
-            Q.SetSkillshot(0.4f, 60f, float.MaxValue, false, SkillshotType.SkillshotCircle);
-
-            W = new Spell(SpellSlot.W, 850f, DamageType.Magical);
-            W.SetSkillshot(0.7f, 125f, 2500f, false, SkillshotType.SkillshotCircle);
-
-            E = new Spell(SpellSlot.E, 700f, DamageType.Magical);
-            E.SetTargetted(0.2f, 1700f);
-            E.Collision = true;
-
-            R = new Spell(SpellSlot.R, 825f, DamageType.Magical);
-            R.SetSkillshot(0.8f, (float) (80 * Math.PI / 180), float.MaxValue, false, SkillshotType.SkillshotCone);
         }
 
         protected override void OnPreUpdate()
@@ -372,10 +385,14 @@ namespace SFXCassiopeia.Champions
 
             if (HeroListManager.Enabled("w-immobile") && W.IsReady())
             {
-                var target = Targets.FirstOrDefault(t => HeroListManager.Check("w-immobile", t) && Utils.IsImmobile(t));
+                var target =
+                    Targets.FirstOrDefault(
+                        t =>
+                            HeroListManager.Check("w-immobile", t) && BestTargetOnlyManager.Check("w-immobile", W, t) &&
+                            Utils.IsImmobile(t));
                 if (target != null)
                 {
-                    Casting.SkillShot(target, W, W.GetHitChance("harass"));
+                    Casting.SkillShot(target, W, HitChance.High);
                 }
             }
         }
@@ -429,56 +446,6 @@ namespace SFXCassiopeia.Champions
             }
         }
 
-        private void OnUnitDash(Obj_AI_Base sender, Dash.DashItem args)
-        {
-            try
-            {
-                var hero = sender as Obj_AI_Hero;
-                if (!sender.IsEnemy || hero == null)
-                {
-                    return;
-                }
-                var endTick = Game.Time - Game.Ping / 2000f + (args.EndPos.Distance(args.StartPos) / args.Speed);
-
-                var wCasted = false;
-                if (HeroListManager.Check("w-gapcloser", hero) && Player.Distance(args.EndPos) <= W.Range && W.IsReady())
-                {
-                    var target = TargetSelector.GetTarget(W.Range * 0.85f, W.DamageType);
-                    if (target == null || sender.NetworkId.Equals(target.NetworkId))
-                    {
-                        var delay = (int) (endTick - Game.Time - W.Delay - 0.1f);
-                        if (delay > 0)
-                        {
-                            Utility.DelayAction.Add(delay * 1000, () => W.Cast(args.EndPos));
-                        }
-                        else
-                        {
-                            W.Cast(args.EndPos);
-                        }
-                        wCasted = true;
-                    }
-                }
-
-                if (!wCasted && HeroListManager.Check("q-gapcloser", hero) && Player.Distance(args.EndPos) <= Q.Range &&
-                    Q.IsReady())
-                {
-                    var delay = (int) (endTick - Game.Time - Q.Delay - 0.1f);
-                    if (delay > 0)
-                    {
-                        Utility.DelayAction.Add(delay * 1000, () => Q.Cast(args.EndPos));
-                    }
-                    else
-                    {
-                        Q.Cast(args.EndPos);
-                    }
-                }
-            }
-            catch (Exception ex)
-            {
-                Global.Logger.AddItem(new LogItem(ex));
-            }
-        }
-
         private void OnInterruptableTarget(Obj_AI_Hero sender, Interrupter2.InterruptableTargetEventArgs args)
         {
             try
@@ -495,37 +462,60 @@ namespace SFXCassiopeia.Champions
             }
         }
 
-        private void OnEnemyGapcloser(ActiveGapcloser args)
+        private void OnEnemyGapcloser(object sender, GapcloserManagerArgs args)
         {
             try
             {
-                if (!args.Sender.IsEnemy)
+                if (args.UniqueId == "q-gapcloser" && Q.IsReady() &&
+                    BestTargetOnlyManager.Check("q-gapcloser", Q, args.Hero))
                 {
-                    return;
-                }
-                if (_ultimate.IsActive(UltimateModeType.Gapcloser, args.Sender))
-                {
-                    if (args.End.Distance(Player.Position) < R.Range)
+                    if (args.End.Distance(Player.Position) <= Q.Range)
                     {
-                        R.Cast(args.End);
+                        var delay = (int) (args.EndTime - Game.Time - Q.Delay - 0.1f);
+                        if (delay > 0)
+                        {
+                            Utility.DelayAction.Add(delay * 1000, () => Q.Cast(args.End));
+                        }
+                        else
+                        {
+                            Q.Cast(args.End);
+                        }
                     }
                 }
-                var wCasted = false;
-                if (HeroListManager.Check("w-gapcloser", args.Sender) && Player.Distance(args.End) <= W.Range &&
-                    W.IsReady())
+                if (args.UniqueId == "w-gapcloser" && W.IsReady() &&
+                    BestTargetOnlyManager.Check("w-gapcloser", W, args.Hero))
                 {
-                    var target = TargetSelector.GetTarget(W.Range * 0.85f, W.DamageType);
-                    if (target == null || args.Sender.NetworkId.Equals(target.NetworkId))
+                    if (args.End.Distance(Player.Position) <= W.Range)
                     {
-                        W.Cast(args.End);
-                        wCasted = true;
+                        var delay = (int) (args.EndTime - Game.Time - W.Delay - 0.1f);
+                        if (delay > 0)
+                        {
+                            Utility.DelayAction.Add(delay * 1000, () => W.Cast(args.End));
+                        }
+                        else
+                        {
+                            W.Cast(args.End);
+                        }
                     }
                 }
-
-                if (!wCasted && HeroListManager.Check("q-gapcloser", args.Sender) &&
-                    Player.Distance(args.End) <= Q.Range && Q.IsReady())
+                if (string.IsNullOrEmpty(args.UniqueId))
                 {
-                    Q.Cast(args.End);
+                    if (_ultimate.IsActive(UltimateModeType.Gapcloser, args.Hero) &&
+                        BestTargetOnlyManager.Check("r-gapcloser", R, args.Hero))
+                    {
+                        if (args.End.Distance(Player.Position) <= R.Range)
+                        {
+                            if (args.EndTime - Game.Time > R.Delay)
+                            {
+                                Utility.DelayAction.Add(
+                                    (int) ((args.EndTime - Game.Time - R.Delay) * 1000), () => R.Cast(args.End));
+                            }
+                            else
+                            {
+                                R.Cast(args.End);
+                            }
+                        }
+                    }
                 }
             }
             catch (Exception ex)
@@ -576,35 +566,58 @@ namespace SFXCassiopeia.Champions
                 {
                     return 0;
                 }
-                var manaCost = (w && W.IsReady() ? W.Instance.ManaCost : (q ? Q.Instance.ManaCost : 0)) * 2;
-                var damage = (w && W.IsReady() ? W.GetDamage(target) : (q ? Q.GetDamage(target) : 0)) * 2;
 
-                if (e)
+                var damage = 0f;
+                var totalMana = 0f;
+                var manaMulti = _ultimate.DamagePercent / 100f;
+
+                if (r && R.IsReady() && R.IsInRange(target))
                 {
-                    var eMana = E.Instance.ManaCost;
+                    var rMana = R.ManaCost * manaMulti;
+                    if (totalMana + rMana <= Player.Mana)
+                    {
+                        totalMana += rMana;
+                        damage += R.GetDamage(target);
+                    }
+                }
+
+                if (q && Q.IsReady() && Q.IsInRange(target))
+                {
+                    var qMana = Q.ManaCost * manaMulti;
+                    if (totalMana + qMana <= Player.Mana)
+                    {
+                        totalMana += qMana;
+                        damage += Q.GetDamage(target);
+                    }
+                }
+                else if (w && W.IsReady() && W.IsInRange(target))
+                {
+                    var wMana = W.ManaCost * manaMulti;
+                    if (totalMana + wMana <= Player.Mana)
+                    {
+                        totalMana += wMana;
+                        damage += W.GetDamage(target);
+                    }
+                }
+                if (e && E.IsReady(3000) && E.IsInRange(target))
+                {
+                    var eMana = E.ManaCost * manaMulti;
                     var eDamage = E.GetDamage(target);
                     var count = target.IsNearTurret() && !target.IsFacing(Player) ||
                                 target.IsNearTurret() && Player.HealthPercent <= 35 || !R.IsReady()
                         ? 5
-                        : 10;
+                        : 8;
                     for (var i = 0; i < count; i++)
                     {
-                        if (manaCost + eMana > Player.Mana)
+                        if (totalMana + eMana > Player.Mana)
                         {
                             break;
                         }
-                        manaCost += eMana;
+                        totalMana += eMana;
                         damage += eDamage;
                     }
                 }
-                if (r)
-                {
-                    if (manaCost + R.Instance.ManaCost - 10 > Player.Mana)
-                    {
-                        return damage;
-                    }
-                    return damage + (R.IsReady() ? R.GetDamage(target) : 0);
-                }
+
                 damage += ItemManager.CalculateComboDamage(target);
                 damage += SummonerManager.CalculateComboDamage(target);
                 return damage;
@@ -679,8 +692,8 @@ namespace SFXCassiopeia.Champions
                         t =>
                             Q.CanCast(t) &&
                             (GetPoisonBuffEndTime(t) < Q.Delay * 1.2f ||
-                             (HeroListManager.Check("q-fleeing", t) && !t.IsFacing(Player) && t.IsMoving &&
-                              t.Distance(Player) > 150)));
+                             (HeroListManager.Check("q-fleeing", t) && BestTargetOnlyManager.Check("q-fleeing", Q, t) &&
+                              !t.IsFacing(Player) && t.IsMoving && t.Distance(Player) > 150)));
                 if (ts != null)
                 {
                     _lastQPoisonDelay = Game.Time + Q.Delay;
@@ -704,8 +717,8 @@ namespace SFXCassiopeia.Champions
                             W.CanCast(t) &&
                             ((_lastQPoisonDelay < Game.Time && GetPoisonBuffEndTime(t) < W.Delay * 1.2 ||
                               _lastQPoisonT.NetworkId != t.NetworkId) ||
-                             (HeroListManager.Check("w-fleeing", t) && !t.IsFacing(Player) && t.IsMoving &&
-                              t.Distance(Player) > 150)));
+                             (HeroListManager.Check("w-fleeing", t) && BestTargetOnlyManager.Check("w-fleeing", W, t) &&
+                              !t.IsFacing(Player) && t.IsMoving && t.Distance(Player) > 150)));
                 if (ts != null)
                 {
                     Casting.SkillShot(ts, W, hitChance);

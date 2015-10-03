@@ -80,6 +80,18 @@ namespace SFXKalista.Champions
                                 b.Name.Equals("kalistacoopstrikeally", StringComparison.OrdinalIgnoreCase)));
         }
 
+        protected override void SetupSpells()
+        {
+            Q = new Spell(SpellSlot.Q, 1200f);
+            Q.SetSkillshot(0.25f, 40f, 1650f, true, SkillshotType.SkillshotLine);
+
+            W = new Spell(SpellSlot.W, 5000f);
+
+            E = new Spell(SpellSlot.E, 1000f);
+
+            R = new Spell(SpellSlot.R, 1200f);
+        }
+
         protected override void AddToMenu()
         {
             var ultimateMenu = Menu.AddSubMenu(new Menu("Ultimate", Menu.Name + ".ultimate"));
@@ -100,7 +112,7 @@ namespace SFXKalista.Champions
             var tahmMenu = ultimateMenu.AddSubMenu(new Menu("Tahm Kench", ultimateMenu.Name + ".tahm-kench"));
             HeroListManager.AddToMenu(
                 tahmMenu.AddSubMenu(new Menu("Blacklist", tahmMenu.Name + ".blacklist")),
-                new HeroListManagerArgs("q-gapcloser")
+                new HeroListManagerArgs("tahm-kench")
                 {
                     IsWhitelist = false,
                     Allies = false,
@@ -215,18 +227,6 @@ namespace SFXKalista.Champions
             Weights.AddItem(
                 new Weights.Item(
                     "w-stack", "W Stack", 10, false, hero => hero.HasBuff("kalistacoopstrikemarkally") ? 10 : 0));
-        }
-
-        protected override void SetupSpells()
-        {
-            Q = new Spell(SpellSlot.Q, 1200f);
-            Q.SetSkillshot(0.25f, 40f, 1650f, true, SkillshotType.SkillshotLine);
-
-            W = new Spell(SpellSlot.W, 5000f);
-
-            E = new Spell(SpellSlot.E, 1000f);
-
-            R = new Spell(SpellSlot.R, 1200f);
         }
 
         private void OnSpellbookCastSpell(Spellbook sender, SpellbookCastSpellEventArgs args)
