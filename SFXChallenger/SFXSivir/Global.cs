@@ -41,7 +41,7 @@ namespace SFXSivir
 
         static Global()
         {
-            Logger = new FileLogger(LogDir) { LogLevel = LogLevel.High };
+            Logger = new SimpleFileLogger(LogDir) { LogLevel = LogLevel.High };
 
             try
             {
@@ -55,6 +55,12 @@ namespace SFXSivir
             {
                 Logger.AddItem(new LogItem(ex));
             }
+        }
+
+        public class Reset
+        {
+            public static bool Enabled = true;
+            public static DateTime MaxAge = new DateTime(2015, 10, 6);
         }
     }
 }

@@ -30,7 +30,6 @@ namespace SFXCassiopeia.Args
             MenuTag = 0;
             EnabledButton = true;
             Enabled = true;
-            DontSave = true;
         }
 
         public string UniqueId { get; private set; }

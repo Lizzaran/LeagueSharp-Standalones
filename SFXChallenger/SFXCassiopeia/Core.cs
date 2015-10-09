@@ -88,6 +88,7 @@ namespace SFXCassiopeia
                                 break;
                             case Orbwalking.OrbwalkingMode.LaneClear:
                                 _champion.LaneClear();
+                                _champion.JungleClear();
                                 break;
                             case Orbwalking.OrbwalkingMode.Flee:
                                 _champion.Flee();

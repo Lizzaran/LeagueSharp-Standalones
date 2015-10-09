@@ -46,8 +46,6 @@ namespace SFXKalista.SFXTargetSelector
     {
         public const int MinWeight = 0;
         public const int MaxWeight = 20;
-        public const int MinMultiplicator = 1;
-        public const int MaxMultiplicator = 5;
         private const string InvertedPrefix = "[i] ";
         private const float BestTargetSwitchDelay = 0.5f;
         private static Menu _mainMenu;
@@ -162,13 +160,13 @@ namespace SFXKalista.SFXTargetSelector
 
                 _weightsMenu = mainMenu.AddSubMenu(new Menu("Weights", mainMenu.Name + ".weights"));
 
-                var heroesMenu = _weightsMenu.AddSubMenu(new Menu("Hero Multiplier", _weightsMenu.Name + ".heroes"));
+                var heroesMenu = _weightsMenu.AddSubMenu(new Menu("Hero Weight %", _weightsMenu.Name + ".heroes"));
 
                 foreach (var enemy in Targets.Items)
                 {
                     heroesMenu.AddItem(
                         new MenuItem(heroesMenu.Name + "." + enemy.Hero.ChampionName, enemy.Hero.ChampionName).SetValue(
-                            new Slider(1, MinMultiplicator, MaxMultiplicator)).DontSave());
+                            new Slider(100, 0, 200)).DontSave());
                 }
 
                 foreach (var item in Items)
@@ -205,8 +203,54 @@ namespace SFXKalista.SFXTargetSelector
                 drawingWeightsMenu.AddItem(
                     new MenuItem(drawingWeightsMenu.Name + ".simple", "Simple").SetShared().SetValue(false));
 
+                Game.OnInput += OnGameInput;
                 Drawing.OnDraw += OnDrawingDraw;
                 Core.OnPreUpdate += OnCorePreUpdate;
+            }
+            catch (Exception ex)
+            {
+                Global.Logger.AddItem(new LogItem(ex));
+            }
+        }
+
+        private static void OnGameInput(GameInputEventArgs args)
+        {
+            try
+            {
+                if (!string.IsNullOrEmpty(args.Input))
+                {
+                    return;
+                }
+                var input = args.Input.ToLower();
+                if (input.Equals("/weights reset", StringComparison.OrdinalIgnoreCase))
+                {
+                    args.Process = false;
+                    RestoreDefaultWeights();
+                }
+            }
+            catch (Exception ex)
+            {
+                Global.Logger.AddItem(new LogItem(ex));
+            }
+        }
+
+        public static void RestoreDefaultWeights()
+        {
+            try
+            {
+                foreach (var item in Items)
+                {
+                    if (_weightsMenu != null)
+                    {
+                        var menuItem = _weightsMenu.Item(_weightsMenu.Name + "." + item.Name);
+                        if (menuItem != null)
+                        {
+                            menuItem.SetValue(new Slider(item.DefaultWeight, MinWeight, MaxWeight));
+                        }
+                    }
+                    item.Weight = item.DefaultWeight;
+                }
+                Average = (float) Items.Select(w => w.Weight).DefaultIfEmpty(0).Average();
             }
             catch (Exception ex)
             {
@@ -235,26 +279,18 @@ namespace SFXKalista.SFXTargetSelector
                     }
                     foreach (var target in enemies)
                     {
-                        var totalWeight = 0f;
-                        foreach (var weight in Items.Where(w => w.Weight > 0))
+                        var totalWeight = Items.Where(w => w.Weight > 0).Sum(w => CalculatedWeight(w, target, true));
+
+                        if (_mainMenu != null)
                         {
-                            var lastWeight = CalculatedWeight(weight, target, true);
-                            if (lastWeight > 0)
-                            {
-                                if (_mainMenu != null)
-                                {
-                                    var heroMultiplicator =
-                                        _mainMenu.Item(_mainMenu.Name + ".weights.heroes." + target.Hero.ChampionName)
-                                            .GetValue<Slider>()
-                                            .Value;
-                                    if (heroMultiplicator > 1)
-                                    {
-                                        lastWeight += Average * heroMultiplicator;
-                                    }
-                                }
-                                totalWeight += lastWeight;
-                            }
+                            var heroPercent =
+                                _mainMenu.Item(_mainMenu.Name + ".weights.heroes." + target.Hero.ChampionName)
+                                    .GetValue<Slider>()
+                                    .Value;
+
+                            totalWeight = heroPercent > 0 ? totalWeight / 100 * heroPercent : 0;
                         }
+
                         target.SimulatedWeight = totalWeight;
                     }
                     _drawingTargets = enemies.OrderByDescending(t => t.SimulatedWeight).ToList();
@@ -449,14 +485,12 @@ namespace SFXKalista.SFXTargetSelector
 
                     if (_mainMenu != null)
                     {
-                        var heroMultiplicator =
+                        var heroPercent =
                             _mainMenu.Item(_mainMenu.Name + ".weights.heroes." + target.Hero.ChampionName)
                                 .GetValue<Slider>()
                                 .Value;
-                        if (heroMultiplicator > 1)
-                        {
-                            tmpWeight += Average * heroMultiplicator;
-                        }
+
+                        tmpWeight = heroPercent > 0 ? tmpWeight / 100 * heroPercent : 0;
                     }
 
                     target.Weight = tmpWeight;

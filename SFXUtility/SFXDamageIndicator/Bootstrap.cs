@@ -42,6 +42,11 @@ namespace SFXDamageIndicator
         {
             try
             {
+                if (Global.Reset.Enabled)
+                {
+                    Reset.Force(Global.Name, Global.Reset.MaxAge);
+                }
+
                 AppDomain.CurrentDomain.UnhandledException +=
                     delegate(object sender, UnhandledExceptionEventArgs eventArgs)
                     {

@@ -40,6 +40,7 @@ namespace SFXVarus.Interfaces
         void Combo();
         void Harass();
         void LaneClear();
+        void JungleClear();
         void Flee();
         void Killsteal();
     }

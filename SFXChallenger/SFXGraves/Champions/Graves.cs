@@ -36,9 +36,14 @@ using SFXGraves.Library.Logger;
 using SFXGraves.Managers;
 using SharpDX;
 using DamageType = SFXGraves.Enumerations.DamageType;
+using MinionManager = SFXGraves.Library.MinionManager;
+using MinionOrderTypes = SFXGraves.Library.MinionOrderTypes;
+using MinionTeam = SFXGraves.Library.MinionTeam;
+using MinionTypes = SFXGraves.Library.MinionTypes;
 using Orbwalking = SFXGraves.Wrappers.Orbwalking;
 using Spell = SFXGraves.Wrappers.Spell;
 using TargetSelector = SFXGraves.SFXTargetSelector.TargetSelector;
+using Utils = SFXGraves.Helpers.Utils;
 
 #endregion
 
@@ -95,7 +100,9 @@ namespace SFXGraves.Champions
                 InterruptDelay = false,
                 Spells = Spells,
                 DamageCalculation =
-                    hero => CalcComboDamage(hero, Menu.Item(Menu.Name + ".combo.q").GetValue<bool>(), true)
+                    (hero, resMulti, rangeCheck) =>
+                        CalcComboDamage(
+                            hero, resMulti, rangeCheck, Menu.Item(Menu.Name + ".combo.q").GetValue<bool>(), true)
             };
         }
 
@@ -114,6 +121,8 @@ namespace SFXGraves.Champions
                 });
             comboMenu.AddItem(
                 new MenuItem(comboMenu.Name + ".e-mode", "E Mode").SetValue(new StringList(new[] { "Auto", "Cursor" })));
+            comboMenu.AddItem(
+                new MenuItem(comboMenu.Name + ".e-safety", "E Safety Distance").SetValue(new Slider(320, 0, 500)));
             comboMenu.AddItem(new MenuItem(comboMenu.Name + ".q", "Use Q").SetValue(true));
             comboMenu.AddItem(new MenuItem(comboMenu.Name + ".w", "Use W").SetValue(true));
             comboMenu.AddItem(new MenuItem(comboMenu.Name + ".e", "Use E").SetValue(true));
@@ -140,7 +149,8 @@ namespace SFXGraves.Champions
                     Advanced = true,
                     MaxValue = 101,
                     LevelRanges = new SortedList<int, int> { { 1, 6 }, { 6, 12 }, { 12, 18 } },
-                    DefaultValues = new List<int> { 50, 30, 30 }
+                    DefaultValues = new List<int> { 50, 30, 30 },
+                    IgnoreJungleOption = true
                 });
             laneclearMenu.AddItem(new MenuItem(laneclearMenu.Name + ".q", "Use Q").SetValue(true));
             laneclearMenu.AddItem(new MenuItem(laneclearMenu.Name + ".q-min", "Q Min.").SetValue(new Slider(3, 1, 5)));
@@ -259,10 +269,11 @@ namespace SFXGraves.Champions
                 if (target != null)
                 {
                     var pos = Menu.Item(Menu.Name + ".combo.e-mode").GetValue<StringList>().SelectedIndex == 0
-                        ? GetDashPosition(target)
+                        ? Utils.GetDashPosition(
+                            E, target, Menu.Item(Menu.Name + ".combo.e-safety").GetValue<Slider>().Value)
                         : Player.Position.Extend(
                             Game.CursorPos, Math.Min(E.Range, Player.Position.Distance(Game.CursorPos)));
-                    if (pos.Equals(Vector3.Zero) && !pos.UnderTurret(true))
+                    if (!pos.Equals(Vector3.Zero) && !pos.IsUnderTurret(false))
                     {
                         E.Cast(pos);
                     }
@@ -327,7 +338,7 @@ namespace SFXGraves.Champions
             }
         }
 
-        private float CalcComboDamage(Obj_AI_Hero target, bool q, bool r)
+        private float CalcComboDamage(Obj_AI_Hero target, float resMulti, bool rangeCheck, bool q, bool r)
         {
             try
             {
@@ -338,33 +349,30 @@ namespace SFXGraves.Champions
 
                 var damage = 0f;
                 var totalMana = 0f;
-                var manaMulti = (GameObjects.EnemyHeroes.Count(x => x.IsValidTarget(2000)) == 1
-                    ? 100
-                    : _ultimate.DamagePercent) / 100f;
 
-                if (r && R.IsReady() && R.IsInRange(target, R.Range + R2.Range))
+                if (r && R.IsReady() && (!rangeCheck || R.IsInRange(target, R.Range + R2.Range)))
                 {
-                    var rMana = R.ManaCost * manaMulti;
+                    var rMana = R.ManaCost * resMulti;
                     if (totalMana + rMana <= Player.Mana)
                     {
                         totalMana += rMana;
                         damage += R.GetDamage(target);
                     }
                 }
-                if (q && Q.IsReady() && Q.IsInRange(target))
+                if (q && Q.IsReady() && (!rangeCheck || Q.IsInRange(target)))
                 {
-                    var qMana = Q.ManaCost * manaMulti;
+                    var qMana = Q.ManaCost * resMulti;
                     if (totalMana + qMana <= Player.Mana)
                     {
                         damage += Q.GetDamage(target);
                     }
                 }
-                if (target.Distance(Player) <= Orbwalking.GetRealAutoAttackRange(target) * 0.85f)
+                if (!rangeCheck || target.Distance(Player) <= Orbwalking.GetRealAutoAttackRange(target) * 0.85f)
                 {
                     damage += 2 * (float) Player.GetAutoAttackDamage(target, true);
                 }
-                damage += ItemManager.CalculateComboDamage(target);
-                damage += SummonerManager.CalculateComboDamage(target);
+                damage += ItemManager.CalculateComboDamage(target, rangeCheck);
+                damage += SummonerManager.CalculateComboDamage(target, rangeCheck);
                 return damage;
             }
             catch (Exception ex)
@@ -425,63 +433,6 @@ namespace SFXGraves.Champions
             return new Tuple<int, List<Obj_AI_Hero>, Vector3>(hits.Count, hits, castPos);
         }
 
-        private Vector3 GetDashPosition(Obj_AI_Hero target)
-        {
-            if (!target.IsMelee && Player.CountEnemiesInRange(E.Range + 500) == 1)
-            {
-                return Game.CursorPos;
-            }
-            var aRc = new Geometry.Polygon.Circle(Player.ServerPosition.To2D(), E.Range);
-            var cursorPos = Game.CursorPos;
-            var targetPosition = target.ServerPosition;
-            var pList = new List<Vector3>();
-            var additionalDistance = (0.2 + Game.Ping / 2000f) * target.MoveSpeed;
-
-            if (!IsDangerousPosition(cursorPos))
-            {
-                return cursorPos;
-            }
-
-            foreach (var p in aRc.Points)
-            {
-                var v3 = new Vector2(p.X, p.Y).To3D();
-
-                if (target.IsFacing(Player))
-                {
-                    if (!IsDangerousPosition(v3) && v3.Distance(targetPosition) < 550)
-                    {
-                        pList.Add(v3);
-                    }
-                }
-                else
-                {
-                    if (!IsDangerousPosition(v3) && v3.Distance(targetPosition) < 550 - additionalDistance)
-                    {
-                        pList.Add(v3);
-                    }
-                }
-            }
-            if (Player.UnderTurret() || Player.CountEnemiesInRange(800) == 1)
-            {
-                return pList.Count > 1 ? pList.OrderBy(el => el.Distance(cursorPos)).FirstOrDefault() : Vector3.Zero;
-            }
-            if (!IsDangerousPosition(cursorPos))
-            {
-                return pList.Count > 1 ? pList.OrderBy(el => el.Distance(cursorPos)).FirstOrDefault() : Vector3.Zero;
-            }
-            return pList.Count > 1
-                ? pList.OrderByDescending(el => el.Distance(cursorPos)).FirstOrDefault()
-                : Vector3.Zero;
-        }
-
-        private bool IsDangerousPosition(Vector3 pos)
-        {
-            return
-                HeroManager.Enemies.Any(
-                    e => e.IsValidTarget() && e.IsVisible || (pos.UnderTurret(true) && !Player.UnderTurret(true))) ||
-                pos.IsWall();
-        }
-
         protected override void Harass()
         {
             if (!ResourceManager.Check("harass"))
@@ -503,11 +454,28 @@ namespace SFXGraves.Champions
             }
 
             var useQ = Menu.Item(Menu.Name + ".lane-clear.q").GetValue<bool>() && Q.IsReady();
-            var minQ = Menu.Item(Menu.Name + ".lane-clear.q-min").GetValue<Slider>().Value;
-
             if (useQ)
             {
-                Casting.Farm(Q, minQ, 200f);
+                Casting.Farm(
+                    Q, MinionManager.GetMinions(Q.Range),
+                    Menu.Item(Menu.Name + ".lane-clear.q-min").GetValue<Slider>().Value, 200f);
+            }
+        }
+
+        protected override void JungleClear()
+        {
+            if (!ResourceManager.Check("lane-clear") && !ResourceManager.IgnoreJungle("lane-clear"))
+            {
+                return;
+            }
+
+            var useQ = Menu.Item(Menu.Name + ".lane-clear.q").GetValue<bool>() && Q.IsReady();
+            if (useQ)
+            {
+                Casting.Farm(
+                    Q,
+                    MinionManager.GetMinions(Q.Range, MinionTypes.All, MinionTeam.Neutral, MinionOrderTypes.MaxHealth),
+                    1, 200f);
             }
         }
 

@@ -31,6 +31,7 @@ using SFXKalista.Helpers;
 using SFXKalista.Interfaces;
 using SFXKalista.Library;
 using SFXKalista.Library.Logger;
+using SFXKalista.SFXTargetSelector;
 
 #endregion
 
@@ -71,16 +72,12 @@ namespace SFXKalista
 
                         if (_champion != null)
                         {
-                            try
+                            if (Global.Reset.Enabled)
                             {
-                                Update.Check(
-                                    Global.Name, Assembly.GetExecutingAssembly().GetName().Version, Global.UpdatePath,
-                                    10000);
+                                Reset.Force(Global.Name, Global.Reset.MaxAge, Weights.RestoreDefaultWeights);
                             }
-                            catch (Exception ex)
-                            {
-                                Global.Logger.AddItem(new LogItem(ex));
-                            }
+                            Update.Check(
+                                Global.Name, Assembly.GetExecutingAssembly().GetName().Version, Global.UpdatePath, 10000);
                             Core.Init(_champion, 50);
                             Core.Boot();
                         }

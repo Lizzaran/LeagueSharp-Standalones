@@ -50,6 +50,27 @@ namespace SFXTwistedFate.Helpers
             return false;
         }
 
+        public static bool IsUnderTurret(this Vector3 position, bool ally)
+        {
+            try
+            {
+                if (
+                    GameObjects.Turrets.Any(
+                        t =>
+                            t.Health > 1 && !t.IsDead && (ally && t.IsAlly || !ally && t.IsEnemy) &&
+                            position.Distance(t.Position) < 900f))
+                {
+                    return true;
+                }
+            }
+
+            catch (Exception ex)
+            {
+                Global.Logger.AddItem(new LogItem(ex));
+            }
+            return false;
+        }
+
         public static Vector2 PositionAfter(Obj_AI_Base unit, float t, float speed = float.MaxValue)
         {
             var distance = t * speed;
@@ -172,6 +193,51 @@ namespace SFXTwistedFate.Helpers
         {
             return !ObjectManager.Player.IsDead && !MenuGUI.IsShopOpen &&
                    (!checkScreen || ObjectManager.Player.Position.IsOnScreen());
+        }
+
+        public static Vector3 GetDashPosition(Spell spell, Obj_AI_Hero target, float safetyDistance)
+        {
+            var distance = target.Distance(ObjectManager.Player);
+            var dashPoints = new Geometry.Polygon.Circle(ObjectManager.Player.Position, spell.Range).Points;
+            if (distance < safetyDistance)
+            {
+                dashPoints.AddRange(
+                    new Geometry.Polygon.Circle(ObjectManager.Player.Position, safetyDistance - distance).Points);
+            }
+            dashPoints = dashPoints.Where(p => !p.IsWall()).OrderBy(p => p.Distance(Game.CursorPos)).ToList();
+            foreach (var point in dashPoints)
+            {
+                var allies =
+                    GameObjects.AllyHeroes.Where(
+                        hero => !hero.IsDead && hero.Distance(point.To3D()) < ObjectManager.Player.AttackRange).ToList();
+                var enemies =
+                    GameObjects.EnemyHeroes.Where(
+                        hero => hero.IsValidTarget(ObjectManager.Player.AttackRange, true, point.To3D())).ToList();
+                var lowEnemies = enemies.Where(hero => hero.HealthPercent <= 15).ToList();
+
+                if (!point.To3D().IsUnderTurret(false))
+                {
+                    if (enemies.Count == 1 &&
+                        (!target.IsMelee ||
+                         (target.HealthPercent <= ObjectManager.Player.HealthPercent - 25 ||
+                          target.Position.Distance(point.To3D()) >= safetyDistance)) ||
+                        allies.Count >
+                        enemies.Count -
+                        (ObjectManager.Player.HealthPercent >= (10 * lowEnemies.Count) ? lowEnemies.Count : 0))
+                    {
+                        return point.To3D();
+                    }
+                }
+                else
+                {
+                    if (enemies.Count == 1 && lowEnemies.Any(t => t.NetworkId.Equals(target.NetworkId)))
+                    {
+                        return point.To3D();
+                    }
+                }
+            }
+
+            return Vector3.Zero;
         }
     }
 }

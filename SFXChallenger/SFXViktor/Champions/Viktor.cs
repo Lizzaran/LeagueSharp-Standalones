@@ -85,10 +85,10 @@ namespace SFXViktor.Champions
         {
             Q = new Spell(SpellSlot.Q, Player.BoundingRadius + 600f, DamageType.Magical);
             Q.Range += GameObjects.EnemyHeroes.Select(e => e.BoundingRadius).DefaultIfEmpty(25).Min();
-            Q.SetTargetted(0.5f, 1800f);
+            Q.SetTargetted(0.15f, 2050f);
 
             W = new Spell(SpellSlot.W, 700f, DamageType.Magical);
-            W.SetSkillshot(1.6f, 300f, float.MaxValue, false, SkillshotType.SkillshotCircle);
+            W.SetSkillshot(1f, 300f, float.MaxValue, false, SkillshotType.SkillshotCircle);
 
             E = new Spell(SpellSlot.E, 525f, DamageType.Magical);
             E.SetSkillshot(0f, 90f, 800f, false, SkillshotType.SkillshotLine);
@@ -109,9 +109,9 @@ namespace SFXViktor.Champions
                 Interrupt = true,
                 InterruptDelay = true,
                 DamageCalculation =
-                    hero =>
+                    (hero, resMulti, rangeCheck) =>
                         CalcComboDamage(
-                            hero, Menu.Item(Menu.Name + ".combo.q").GetValue<bool>(),
+                            hero, resMulti, rangeCheck, Menu.Item(Menu.Name + ".combo.q").GetValue<bool>(),
                             Menu.Item(Menu.Name + ".combo.e").GetValue<bool>(), true)
             };
         }
@@ -155,7 +155,8 @@ namespace SFXViktor.Champions
                     Advanced = true,
                     MaxValue = 101,
                     LevelRanges = new SortedList<int, int> { { 1, 6 }, { 6, 12 }, { 12, 18 } },
-                    DefaultValues = new List<int> { 80, 50, 50 }
+                    DefaultValues = new List<int> { 80, 50, 50 },
+                    IgnoreJungleOption = true
                 });
             ResourceManager.AddToMenu(
                 laneclearMenu,
@@ -166,7 +167,8 @@ namespace SFXViktor.Champions
                     Advanced = true,
                     MaxValue = 101,
                     LevelRanges = new SortedList<int, int> { { 1, 6 }, { 6, 12 }, { 12, 18 } },
-                    DefaultValues = new List<int> { 40, 20, 20 }
+                    DefaultValues = new List<int> { 40, 20, 20 },
+                    IgnoreJungleOption = true
                 });
             laneclearMenu.AddItem(new MenuItem(laneclearMenu.Name + ".q", "Use Q").SetValue(false));
             laneclearMenu.AddItem(new MenuItem(laneclearMenu.Name + ".e", "Use E").SetValue(true));
@@ -183,7 +185,7 @@ namespace SFXViktor.Champions
                     LevelRanges = new SortedList<int, int> { { 1, 6 }, { 6, 12 }, { 12, 18 } },
                     DefaultValues = new List<int> { 50, 30, 30 }
                 });
-            lasthitMenu.AddItem(new MenuItem(lasthitMenu.Name + ".q-unkillable", "Q Unkillable").SetValue(false));
+            lasthitMenu.AddItem(new MenuItem(lasthitMenu.Name + ".q-unkillable", "Q Unkillable").SetValue(true));
 
             var fleeMenu = Menu.AddSubMenu(new Menu("Flee", Menu.Name + ".flee"));
             fleeMenu.AddItem(new MenuItem(fleeMenu.Name + ".w", "Use W").SetValue(false));
@@ -205,7 +207,7 @@ namespace SFXViktor.Champions
                     Enemies = true,
                     DefaultValue = false
                 });
-            BestTargetOnlyManager.AddToMenu(wImmobileMenu, "w-immobile", true);
+            BestTargetOnlyManager.AddToMenu(wImmobileMenu, "w-immobile");
 
             var wSlowedMenu = miscMenu.AddSubMenu(new Menu("W Slowed", miscMenu.Name + "w-slowed"));
             HeroListManager.AddToMenu(
@@ -215,7 +217,8 @@ namespace SFXViktor.Champions
                     IsWhitelist = false,
                     Allies = false,
                     Enemies = true,
-                    DefaultValue = false
+                    DefaultValue = false,
+                    Enabled = false
                 });
             BestTargetOnlyManager.AddToMenu(wSlowedMenu, "w-slowed", true);
 
@@ -528,7 +531,18 @@ namespace SFXViktor.Champions
                 if (sender.IsEnemy && args.DangerLevel == Interrupter2.DangerLevel.High &&
                     _ultimate.IsActive(UltimateModeType.Interrupt, sender))
                 {
-                    Utility.DelayAction.Add(DelayManager.Get("ultimate-interrupt-delay"), () => R.Cast(sender.Position));
+                    Utility.DelayAction.Add(
+                        DelayManager.Get("ultimate-interrupt-delay"), delegate
+                        {
+                            if (R.IsReady())
+                            {
+                                var pred = CPrediction.Circle(R, sender, HitChance.High, false);
+                                if (pred.TotalHits > 0)
+                                {
+                                    R.Cast(pred.CastPosition);
+                                }
+                            }
+                        });
                 }
             }
             catch (Exception ex)
@@ -544,6 +558,7 @@ namespace SFXViktor.Champions
 
         protected override void Combo()
         {
+            var single = false;
             var q = Menu.Item(Menu.Name + ".combo.q").GetValue<bool>() && Q.IsReady();
             var w = Menu.Item(Menu.Name + ".combo.w").GetValue<bool>() && W.IsReady();
             var e = Menu.Item(Menu.Name + ".combo.e").GetValue<bool>() && E.IsReady();
@@ -555,7 +570,7 @@ namespace SFXViktor.Champions
                 var target = TargetSelector.GetTarget((E.Range + ELength + E.Width) * 1.1f, E.DamageType);
                 if (target != null)
                 {
-                    ELogicHero(target, E.GetHitChance("combo"));
+                    ELogic(target, GameObjects.EnemyHeroes.ToList(), E.GetHitChance("combo"));
                 }
             }
             if (q)
@@ -581,10 +596,11 @@ namespace SFXViktor.Champions
                     !RLogic(UltimateModeType.Combo, target))
                 {
                     RLogicSingle(UltimateModeType.Combo);
+                    single = true;
                 }
             }
             var rTarget = TargetSelector.GetTarget(R);
-            if (rTarget != null && _ultimate.GetDamage(rTarget) > rTarget.Health)
+            if (rTarget != null && _ultimate.GetDamage(rTarget, UltimateModeType.Combo, single ? 1 : 5) > rTarget.Health)
             {
                 ItemManager.UseComboItems(rTarget);
                 SummonerManager.UseComboSummoners(rTarget);
@@ -603,7 +619,7 @@ namespace SFXViktor.Champions
                 var target = TargetSelector.GetTarget((E.Range + ELength + E.Width) * 1.1f, E.DamageType);
                 if (target != null)
                 {
-                    ELogicHero(target, E.GetHitChance("harass"));
+                    ELogic(target, GameObjects.EnemyHeroes.ToList(), E.GetHitChance("harass"));
                 }
             }
             if (Menu.Item(Menu.Name + ".harass.q").GetValue<bool>())
@@ -616,7 +632,7 @@ namespace SFXViktor.Champions
             }
         }
 
-        private float CalcComboDamage(Obj_AI_Hero target, bool q, bool e, bool r)
+        private float CalcComboDamage(Obj_AI_Hero target, float resMulti, bool rangeCheck, bool q, bool e, bool r)
         {
             try
             {
@@ -627,13 +643,10 @@ namespace SFXViktor.Champions
 
                 var damage = 0f;
                 var totalMana = 0f;
-                var manaMulti = (GameObjects.EnemyHeroes.Count(x => x.IsValidTarget(2000)) == 1
-                    ? 100
-                    : _ultimate.DamagePercent) / 100f;
 
-                if (r && R.IsReady() && R.IsInRange(target, R.Range + R.Width))
+                if (r && R.IsReady() && (!rangeCheck || R.IsInRange(target, R.Range + R.Width)))
                 {
-                    var rMana = R.ManaCost * manaMulti;
+                    var rMana = R.ManaCost * resMulti;
                     if (totalMana + rMana <= Player.Mana)
                     {
                         totalMana += rMana;
@@ -667,18 +680,18 @@ namespace SFXViktor.Champions
                         damage += (R.GetDamage(target, 1) * stacks);
                     }
                 }
-                if (e && E.IsReady() && E.IsInRange(target, E.Range + ELength))
+                if (e && E.IsReady() && (!rangeCheck || E.IsInRange(target, E.Range + ELength)))
                 {
-                    var eMana = E.ManaCost * manaMulti;
+                    var eMana = E.ManaCost * resMulti;
                     if (totalMana + eMana <= Player.Mana)
                     {
                         totalMana += eMana;
                         damage += E.GetDamage(target);
                     }
                 }
-                if (q && Q.IsReady() && Q.IsInRange(target))
+                if (q && Q.IsReady() && (!rangeCheck || Q.IsInRange(target)))
                 {
-                    var qMana = Q.ManaCost * manaMulti;
+                    var qMana = Q.ManaCost * resMulti;
                     if (totalMana + qMana <= Player.Mana)
                     {
                         damage += Q.GetDamage(target);
@@ -688,14 +701,14 @@ namespace SFXViktor.Champions
                         }
                     }
                 }
-                if (HasQBuff() && Orbwalking.InAutoAttackRange(target))
+                if (HasQBuff() && (!rangeCheck || Orbwalking.InAutoAttackRange(target)))
                 {
                     damage += CalcPassiveDamage(target);
                 }
 
                 damage *= 1.1f;
-                damage += ItemManager.CalculateComboDamage(target);
-                damage += SummonerManager.CalculateComboDamage(target);
+                damage += ItemManager.CalculateComboDamage(target, rangeCheck);
+                damage += SummonerManager.CalculateComboDamage(target, rangeCheck);
                 return damage;
             }
             catch (Exception ex)
@@ -841,197 +854,13 @@ namespace SFXViktor.Champions
             }
         }
 
-        private bool ELogicHero(Obj_AI_Hero mainTarget, HitChance hitChance)
+        private bool ELogic(Obj_AI_Hero target, List<Obj_AI_Hero> targets, HitChance hitChance, int minHits = 1)
         {
-            try
-            {
-                if (mainTarget == null)
-                {
-                    return false;
-                }
-                var input = new PredictionInput
-                {
-                    Range = ELength,
-                    Delay = E.Delay,
-                    Radius = E.Width,
-                    Speed = E.Speed,
-                    Type = E.Type,
-                    UseBoundingRadius = true
-                };
-                var input2 = new PredictionInput
-                {
-                    Range = E.Range + ELength,
-                    Delay = E.Delay,
-                    Radius = E.Width,
-                    Speed = E.Speed,
-                    Type = E.Type,
-                    UseBoundingRadius = true
-                };
-                var startPosition = Vector3.Zero;
-                var endPosition = Vector3.Zero;
-                var targets =
-                    GameObjects.EnemyHeroes.Where(t => t.IsValidTarget((E.Range + ELength + E.Width) * 1.25f)).ToList();
-                if (mainTarget.ServerPosition.Distance(Player.ServerPosition) <= E.Range)
-                {
-                    var castPosition = mainTarget.ServerPosition;
-                    var maxAdditionalHits = 0;
-                    foreach (var target in targets.Where(t => t.NetworkId != mainTarget.NetworkId))
-                    {
-                        var lTarget = target;
-                        var additionalHits = 0;
-                        input.Unit = lTarget;
-                        input.From = castPosition;
-                        input.RangeCheckFrom = castPosition;
-                        var pred = Prediction.GetPrediction(input);
-                        if (pred.Hitchance >= HitChance.High)
-                        {
-                            additionalHits++;
-                            var rect = new Geometry.Polygon.Rectangle(
-                                castPosition, castPosition.Extend(pred.CastPosition, ELength), E.Width);
-                            foreach (var target2 in
-                                targets.Where(
-                                    t => t.NetworkId != mainTarget.NetworkId && t.NetworkId != lTarget.NetworkId))
-                            {
-                                input.Unit = target2;
-                                var pred2 = Prediction.GetPrediction(input);
-                                if (!pred2.UnitPosition.Equals(Vector3.Zero) &&
-                                    new Geometry.Polygon.Circle(pred2.UnitPosition, target2.BoundingRadius * 0.9f)
-                                        .Points.Any(p => rect.IsInside(p)))
-                                {
-                                    additionalHits++;
-                                }
-                            }
-                        }
-                        if (additionalHits > maxAdditionalHits)
-                        {
-                            maxAdditionalHits = additionalHits;
-                            endPosition = pred.CastPosition;
-                        }
-                    }
-                    startPosition = castPosition;
-                    if (endPosition.Equals(Vector3.Zero))
-                    {
-                        if (startPosition.Distance(Player.ServerPosition) > E.Range)
-                        {
-                            startPosition = Player.ServerPosition.Extend(startPosition, E.Range);
-                        }
-                        if (mainTarget.Path.Length > 0)
-                        {
-                            var newPos = mainTarget.Path[0];
-                            if (mainTarget.Path.Length > 1 &&
-                                newPos.Distance(mainTarget.ServerPosition) <= mainTarget.BoundingRadius * 4f)
-                            {
-                                var nnPos = newPos.Extend(
-                                    mainTarget.Path[1],
-                                    Math.Min(mainTarget.BoundingRadius * 1.5f, newPos.Distance(mainTarget.Path[1])));
-                                if (startPosition.To2D().AngleBetween(nnPos.To2D()) < 30)
-                                {
-                                    newPos = nnPos;
-                                }
-                            }
-                            endPosition = startPosition.Extend(newPos, ELength);
-                        }
-                        else if (mainTarget.IsFacing(Player))
-                        {
-                            endPosition = startPosition.Extend(Player.ServerPosition, ELength);
-                        }
-                        else
-                        {
-                            endPosition = Player.ServerPosition.Extend(
-                                startPosition, startPosition.Distance(Player.ServerPosition) + ELength);
-                        }
-                    }
-                }
-                else
-                {
-                    var totalHits = 0;
-                    input2.Unit = mainTarget;
-                    var pred = Prediction.GetPrediction(input2);
-                    if (!pred.UnitPosition.Equals(Vector3.Zero) && !pred.CastPosition.Equals(Vector3.Zero))
-                    {
-                        var ranges =
-                            new[] { E.Range }.Concat(
-                                targets.Where(
-                                    t =>
-                                        t.ServerPosition.Distance(Player.ServerPosition) < E.Range &&
-                                        t.ServerPosition.Distance(mainTarget.ServerPosition) < ELength * 1.25f)
-                                    .Select(t => t.ServerPosition.Distance(Player.ServerPosition)));
-                        var maxDistance = (ELength + E.Width + mainTarget.BoundingRadius) * 1.1f;
-                        foreach (var range in ranges)
-                        {
-                            var circle =
-                                new Geometry.Polygon.Circle(Player.ServerPosition, Math.Min(E.Range, range), 50).Points
-                                    .Where(p => p.Distance(pred.UnitPosition) <= maxDistance)
-                                    .Select(p => p.To3D())
-                                    .OrderBy(p => p.Distance(pred.CastPosition));
-                            foreach (var point in circle)
-                            {
-                                var hits = 0;
-                                input.From = point;
-                                input.RangeCheckFrom = point;
-                                input.Unit = mainTarget;
-                                var pred2 = Prediction.GetPrediction(input);
-                                if (pred2.Hitchance >= hitChance)
-                                {
-                                    hits++;
-                                    var rect = new Geometry.Polygon.Rectangle(
-                                        point, point.Extend(pred2.CastPosition, ELength), E.Width);
-                                    foreach (var target in targets.Where(t => t.NetworkId != mainTarget.NetworkId))
-                                    {
-                                        input.Unit = target;
-                                        var pred3 = Prediction.GetPrediction(input);
-                                        if (!pred3.UnitPosition.Equals(Vector3.Zero) &&
-                                            new Geometry.Polygon.Circle(
-                                                pred3.UnitPosition, target.BoundingRadius * 0.9f).Points.Any(
-                                                    p => rect.IsInside(p)))
-                                        {
-                                            hits++;
-                                        }
-                                    }
-                                    if (hits > totalHits ||
-                                        hits > 0 && hits == totalHits &&
-                                        point.Distance(mainTarget.ServerPosition) <
-                                        startPosition.Distance(mainTarget.ServerPosition))
-                                    {
-                                        totalHits = hits;
-                                        startPosition = point;
-                                        endPosition = point.Extend(pred2.CastPosition, ELength);
-                                    }
-                                    if (totalHits == targets.Count)
-                                    {
-                                        break;
-                                    }
-                                }
-                            }
-                            if (totalHits == targets.Count)
-                            {
-                                break;
-                            }
-                        }
-                    }
-                }
-                if (!startPosition.Equals(Vector3.Zero) && !endPosition.Equals(Vector3.Zero))
-                {
-                    if (startPosition.Distance(Player.ServerPosition) > E.Range)
-                    {
-                        startPosition = Player.ServerPosition.Extend(startPosition, E.Range);
-                    }
-                    if (endPosition.Distance(startPosition) > ELength)
-                    {
-                        endPosition = startPosition.Extend(endPosition, ELength);
-                    }
-                    E.Cast(startPosition, endPosition);
-                    return true;
-                }
-            }
-            catch (Exception ex)
-            {
-                Global.Logger.AddItem(new LogItem(ex));
-            }
-            return false;
+            return ELogic(
+                target, targets.Select(t => t as Obj_AI_Base).Where(t => t != null).ToList(), hitChance, minHits);
         }
 
-        private void ELogicFarm(List<Obj_AI_Base> targets, HitChance hitChance, int minHits)
+        private bool ELogic(Obj_AI_Hero mainTarget, List<Obj_AI_Base> targets, HitChance hitChance, int minHits)
         {
             try
             {
@@ -1054,40 +883,57 @@ namespace SFXViktor.Champions
                 var startPos = Vector3.Zero;
                 var endPos = Vector3.Zero;
                 var hits = 0;
-                targets = targets.Where(t => t.IsValidTarget((E.Range + ELength + E.Width) * 1.1f)).ToList();
+                targets = targets.Where(t => t.IsValidTarget(E.Range + ELength + E.Width * 1.1f)).ToList();
                 var targetCount = targets.Count;
 
                 foreach (var target in targets)
                 {
+                    bool containsTarget;
                     var lTarget = target;
-                    if (target.ServerPosition.Distance(Player.ServerPosition) <= E.Range)
+                    if (target.Distance(Player.Position) <= E.Range)
                     {
-                        var cCastPos = target.ServerPosition;
+                        containsTarget = mainTarget == null || lTarget.NetworkId == mainTarget.NetworkId;
+                        var cCastPos = target.Position;
                         foreach (var t in targets.Where(t => t.NetworkId != lTarget.NetworkId))
                         {
                             var count = 1;
+                            var cTarget = t;
                             input.Unit = t;
                             input.From = cCastPos;
                             input.RangeCheckFrom = cCastPos;
                             var pred = Prediction.GetPrediction(input);
-                            var rect = new Geometry.Polygon.Rectangle(
-                                cCastPos.To2D(), cCastPos.Extend(pred.CastPosition, ELength).To2D(), E.Width);
-                            foreach (var c in targets.Where(c => c.NetworkId != lTarget.NetworkId))
-                            {
-                                input.Unit = c;
-                                var cPredPos = c.Position;
-                                if (
-                                    new Geometry.Polygon.Circle(
-                                        cPredPos, (c.IsMoving ? (c.BoundingRadius / 2f) : (c.BoundingRadius) * 0.9f))
-                                        .Points.Any(p => rect.IsInside(p)))
-                                {
-                                    count++;
-                                }
-                            }
                             if (pred.Hitchance >= (hitChance - 1))
                             {
                                 count++;
-                                if (count > hits)
+                                if (!containsTarget)
+                                {
+                                    containsTarget = t.NetworkId == mainTarget.NetworkId;
+                                }
+                                var rect = new Geometry.Polygon.Rectangle(
+                                    cCastPos.To2D(), cCastPos.Extend(pred.CastPosition, ELength).To2D(), E.Width);
+                                foreach (var c in
+                                    targets.Where(
+                                        c => c.NetworkId != cTarget.NetworkId && c.NetworkId != lTarget.NetworkId))
+                                {
+                                    input.Unit = c;
+                                    var cPredPos = c.Type == GameObjectType.obj_AI_Minion
+                                        ? c.Position
+                                        : Prediction.GetPrediction(input).UnitPosition;
+                                    if (
+                                        new Geometry.Polygon.Circle(
+                                            cPredPos,
+                                            (c.Type == GameObjectType.obj_AI_Minion && c.IsMoving
+                                                ? (c.BoundingRadius / 2f)
+                                                : (c.BoundingRadius) * 0.9f)).Points.Any(p => rect.IsInside(p)))
+                                    {
+                                        count++;
+                                        if (!containsTarget && c.NetworkId == mainTarget.NetworkId)
+                                        {
+                                            containsTarget = true;
+                                        }
+                                    }
+                                }
+                                if (count > hits && containsTarget)
                                 {
                                     hits = count;
                                     startPos = cCastPos;
@@ -1099,47 +945,12 @@ namespace SFXViktor.Champions
                                 }
                             }
                         }
-                        if (endPos.Equals(Vector3.Zero))
+                        if (endPos.Equals(Vector3.Zero) && containsTarget)
                         {
-                            startPos = cCastPos;
-                            if (IsSpellUpgraded(E))
-                            {
-                                if (target.Path.Length > 0)
-                                {
-                                    var newPos = target.Path[0];
-                                    if (target.Path.Length > 1 && newPos.Distance(target.ServerPosition) <= 150)
-                                    {
-                                        newPos = newPos.Extend(target.Path[1], 50);
-                                    }
-                                    startPos = target.ServerPosition.Extend(newPos, -(lTarget.BoundingRadius * 0.85f));
-                                }
-                                else if (target.IsFacing(Player))
-                                {
-                                    startPos = target.ServerPosition.Extend(
-                                        Player.ServerPosition, -(lTarget.BoundingRadius * 0.85f));
-                                }
-                                else
-                                {
-                                    startPos = cCastPos;
-                                }
-                            }
-                            if (startPos.Distance(Player.ServerPosition) > E.Range)
-                            {
-                                startPos = Player.ServerPosition.Extend(startPos, E.Range);
-                            }
-                            if (target.Path.Length > 0)
-                            {
-                                endPos = startPos.Extend(target.Path[0], ELength);
-                            }
-                            else if (target.IsFacing(Player))
-                            {
-                                endPos = startPos.Extend(Player.ServerPosition, ELength);
-                            }
-                            else
-                            {
-                                endPos = Player.ServerPosition.Extend(
-                                    startPos, startPos.Distance(Player.ServerPosition) + ELength);
-                            }
+                            startPos = target.IsFacing(Player) && IsSpellUpgraded(E)
+                                ? Player.Position.Extend(cCastPos, Player.Distance(cCastPos) - (ELength / 10f))
+                                : cCastPos;
+                            endPos = Player.Position.Extend(cCastPos, ELength);
                             hits = 1;
                         }
                     }
@@ -1147,43 +958,50 @@ namespace SFXViktor.Champions
                     {
                         input2.Unit = lTarget;
                         var castPos = Prediction.GetPrediction(input2).CastPosition;
-                        if (castPos.Equals(Vector3.Zero))
-                        {
-                            continue;
-                        }
+                        var sCastPos = Player.Position.Extend(castPos, E.Range);
+
+                        var extDist = ELength / 4f;
                         var circle =
-                            new Geometry.Polygon.Circle(
-                                Player.ServerPosition, Math.Min(E.Range, castPos.Distance(Player.ServerPosition)), 45)
-                                .Points.Where(p => p.Distance(castPos) < ELength * 1.5f)
-                                .Select(p => p.To3D())
-                                .OrderBy(p => p.Distance(lTarget.ServerPosition));
+                            new Geometry.Polygon.Circle(Player.Position, sCastPos.Distance(Player.Position), 45).Points
+                                .Where(p => p.Distance(sCastPos) < extDist).OrderBy(p => p.Distance(lTarget));
                         foreach (var point in circle)
                         {
-                            input2.From = point;
-                            input2.RangeCheckFrom = point;
+                            input2.From = point.To3D();
+                            input2.RangeCheckFrom = point.To3D();
                             input2.Range = ELength;
                             var pred2 = Prediction.GetPrediction(input2);
                             if (pred2.Hitchance >= hitChance)
                             {
+                                containsTarget = mainTarget == null || lTarget.NetworkId == mainTarget.NetworkId;
                                 var count = 1;
                                 var rect = new Geometry.Polygon.Rectangle(
-                                    point, point.Extend(pred2.CastPosition, ELength), E.Width);
+                                    point, point.To3D().Extend(pred2.CastPosition, ELength).To2D(), E.Width);
                                 foreach (var c in targets.Where(t => t.NetworkId != lTarget.NetworkId))
                                 {
                                     input2.Unit = c;
-                                    var cPredPos = c.Position;
+                                    var cPredPos = c.Type == GameObjectType.obj_AI_Minion
+                                        ? c.Position
+                                        : Prediction.GetPrediction(input2).UnitPosition;
                                     if (
                                         new Geometry.Polygon.Circle(
-                                            cPredPos, (c.IsMoving ? (c.BoundingRadius / 2f) : (c.BoundingRadius) * 0.9f))
-                                            .Points.Any(p => rect.IsInside(p)))
+                                            cPredPos,
+                                            (c.Type == GameObjectType.obj_AI_Minion && c.IsMoving
+                                                ? (c.BoundingRadius / 2f)
+                                                : (c.BoundingRadius) * 0.9f)).Points.Any(p => rect.IsInside(p)))
                                     {
                                         count++;
+                                        if (!containsTarget && c.NetworkId == mainTarget.NetworkId)
+                                        {
+                                            containsTarget = true;
+                                        }
                                     }
                                 }
-                                if (count > hits)
+                                if (count > hits && containsTarget ||
+                                    count == hits && containsTarget && mainTarget != null &&
+                                    point.Distance(mainTarget.Position) < startPos.Distance(mainTarget.Position))
                                 {
                                     hits = count;
-                                    startPos = point;
+                                    startPos = point.To3D();
                                     endPos = startPos.Extend(pred2.CastPosition, ELength);
                                     if (hits == targetCount)
                                     {
@@ -1200,46 +1018,75 @@ namespace SFXViktor.Champions
                 }
                 if (hits >= minHits && !startPos.Equals(Vector3.Zero) && !endPos.Equals(Vector3.Zero))
                 {
-                    if (startPos.Distance(Player.ServerPosition) > E.Range)
+                    if (startPos.Distance(Player.Position) > E.Range)
                     {
-                        startPos = Player.ServerPosition.Extend(startPos, E.Range);
+                        startPos = Player.Position.Extend(startPos, E.Range);
                     }
-                    if (endPos.Distance(startPos) > ELength)
+                    if (startPos.Distance(endPos) > ELength)
                     {
                         endPos = startPos.Extend(endPos, ELength);
                     }
                     E.Cast(startPos, endPos);
+                    return true;
                 }
             }
             catch (Exception ex)
             {
                 Global.Logger.AddItem(new LogItem(ex));
             }
+            return false;
         }
 
         protected override void LaneClear()
         {
-            if (Menu.Item(Menu.Name + ".lane-clear.e").GetValue<bool>() && E.IsReady() &&
-                ResourceManager.Check("lane-clear-e"))
-            {
-                var minions = MinionManager.GetMinions(
-                    (E.Range + ELength + E.Width) * 1.2f, MinionTypes.All, MinionTeam.NotAlly,
-                    MinionOrderTypes.MaxHealth);
-                var minHits = minions.Any(m => m.Team == GameObjectTeam.Neutral)
-                    ? 1
-                    : Menu.Item(Menu.Name + ".lane-clear.e-min").GetValue<Slider>().Value;
+            var useE = Menu.Item(Menu.Name + ".lane-clear.e").GetValue<bool>() && E.IsReady() &&
+                       ResourceManager.Check("lane-clear-e");
+            var useQ = Menu.Item(Menu.Name + ".lane-clear.q").GetValue<bool>() && Q.IsReady() &&
+                       ResourceManager.Check("lane-clear-q");
 
+            if (useE)
+            {
+                var minions = MinionManager.GetMinions((E.Range + ELength + E.Width) * 1.2f);
+                var minHits = Menu.Item(Menu.Name + ".lane-clear.e-min").GetValue<Slider>().Value;
                 if (minions.Count >= minHits)
                 {
-                    ELogicFarm((minions.Concat(GameObjects.EnemyHeroes)).ToList(), HitChance.High, minHits);
+                    ELogic(null, (minions.Concat(GameObjects.EnemyHeroes)).ToList(), HitChance.High, minHits);
                 }
             }
-            if (Menu.Item(Menu.Name + ".lane-clear.q").GetValue<bool>() && Q.IsReady() &&
-                ResourceManager.Check("lane-clear-q"))
+
+            if (useQ)
             {
                 var minion =
-                    MinionManager.GetMinions(Q.Range, MinionTypes.All, MinionTeam.NotAlly, MinionOrderTypes.MaxHealth)
+                    MinionManager.GetMinions(Q.Range)
                         .FirstOrDefault(m => m.Health < Q.GetDamage(m) || m.Health * 2 > Q.GetDamage(m));
+                if (minion != null)
+                {
+                    Casting.TargetSkill(minion, Q);
+                }
+            }
+        }
+
+        protected override void JungleClear()
+        {
+            var useE = Menu.Item(Menu.Name + ".lane-clear.e").GetValue<bool>() && E.IsReady() &&
+                       (ResourceManager.Check("lane-clear-e") || ResourceManager.IgnoreJungle("lane-clear-e"));
+            var useQ = Menu.Item(Menu.Name + ".lane-clear.q").GetValue<bool>() && Q.IsReady() &&
+                       (ResourceManager.Check("lane-clear-q") || ResourceManager.IgnoreJungle("lane-clear-q"));
+
+            if (useE)
+            {
+                var minions = MinionManager.GetMinions(
+                    (E.Range + ELength + E.Width) * 1.2f, MinionTypes.All, MinionTeam.Neutral,
+                    MinionOrderTypes.MaxHealth);
+                ELogic(null, (minions.Concat(GameObjects.EnemyHeroes)).ToList(), HitChance.High, 1);
+            }
+
+
+            if (useQ)
+            {
+                var minion =
+                    MinionManager.GetMinions(Q.Range, MinionTypes.All, MinionTeam.Neutral, MinionOrderTypes.MaxHealth)
+                        .FirstOrDefault();
                 if (minion != null)
                 {
                     Casting.TargetSkill(minion, Q);
@@ -1305,7 +1152,7 @@ namespace SFXViktor.Champions
                     var damage = E.GetDamage(target);
                     if (damage * 0.95f > target.Health)
                     {
-                        if (ELogicHero(target, E.GetHitChance("combo")))
+                        if (ELogic(target, GameObjects.EnemyHeroes.ToList(), HitChance.High))
                         {
                             break;
                         }

@@ -69,7 +69,7 @@ namespace SFXVladimir.Managers
             }
         }
 
-        public Func<Obj_AI_Hero, float> DamageCalculation { get; set; }
+        public Func<Obj_AI_Hero, float, bool, float> DamageCalculation { get; set; }
 
         public Menu AddToMenu(Menu menu)
         {
@@ -109,11 +109,12 @@ namespace SFXVladimir.Managers
                     for (var i = 0; i < modes.Count; i++)
                     {
                         requiredMenu.AddItem(
-                            new MenuItem(requiredMenu.Name + "." + GetModeString(modes[i]) + ".min", "Min. Required")
+                            new MenuItem(
+                                requiredMenu.Name + "." + GetModeString(modes[i], true) + ".min", "Min. Required")
                                 .SetValue(new Slider(1, 1, 5))).SetTag(i + 1);
                         HeroListManager.AddToMenu(
                             requiredMenu,
-                            new HeroListManagerArgs("ultimate-required-" + GetModeString(modes[i]))
+                            new HeroListManagerArgs("ultimate-required-" + GetModeString(modes[i], true))
                             {
                                 IsWhitelist = true,
                                 Allies = false,
@@ -210,15 +211,14 @@ namespace SFXVladimir.Managers
                                 Enemies = true,
                                 DefaultValue = false,
                                 DontSave = false,
-                                Enabled = true
+                                Enabled = false
                             });
-                        BestTargetOnlyManager.AddToMenu(autoGapcloserMenu, "r-gapcloser");
+                        BestTargetOnlyManager.AddToMenu(autoGapcloserMenu, "r-gapcloser", true);
                     }
                     uAutoMenu.AddItem(new MenuItem(uAutoMenu.Name + ".min", "Min. Hits").SetValue(new Slider(3, 1, 5)));
                     if (DamageCalculation != null)
                     {
-                        uAutoMenu.AddItem(
-                            new MenuItem(uAutoMenu.Name + ".damage-check", "Damage Check").SetValue(false));
+                        uAutoMenu.AddItem(new MenuItem(uAutoMenu.Name + ".damage-check", "Damage Check").SetValue(true));
                     }
                     uAutoMenu.AddItem(new MenuItem(uAutoMenu.Name + ".enabled", "Enabled").SetValue(true));
                 }
@@ -226,35 +226,49 @@ namespace SFXVladimir.Managers
                 if (Assisted)
                 {
                     var uAssistedMenu = ultimateMenu.AddSubMenu(new Menu("Assisted", ultimateMenu.Name + ".assisted"));
+                    if (Flash)
+                    {
+                        uAssistedMenu.AddItem(
+                            new MenuItem(ultimateMenu.Name + ".flash.min", "Flash Min. Hits").SetValue(
+                                new Slider(3, 1, 5)));
+                    }
                     uAssistedMenu.AddItem(
                         new MenuItem(uAssistedMenu.Name + ".min", "Min. Hits").SetValue(new Slider(1, 1, 5)));
                     if (Flash)
                     {
                         uAssistedMenu.AddItem(
-                            new MenuItem(uAssistedMenu.Name + ".flash", "Flash").SetValue(
+                            new MenuItem(ultimateMenu.Name + ".flash.hotkey", "Flash").SetValue(
                                 new KeyBind('Y', KeyBindType.Press)));
                     }
                     uAssistedMenu.AddItem(
                         new MenuItem(uAssistedMenu.Name + ".hotkey", "Hotkey").SetValue(
                             new KeyBind('T', KeyBindType.Press)));
                     uAssistedMenu.AddItem(
-                        new MenuItem(uAssistedMenu.Name + ".move-cursor", "Move to Cursor").SetValue(false));
+                        new MenuItem(uAssistedMenu.Name + ".move-cursor", "Move to Cursor").SetValue(true));
                     if (DamageCalculation != null)
                     {
                         uAssistedMenu.AddItem(
-                            new MenuItem(uAssistedMenu.Name + ".damage-check", "Damage Check").SetValue(true));
+                            new MenuItem(uAssistedMenu.Name + ".damage-check", "Damage Check").SetValue(false));
                     }
                     uAssistedMenu.AddItem(new MenuItem(uAssistedMenu.Name + ".enabled", "Enabled").SetValue(true));
                 }
 
                 var uSingleMenu = ultimateMenu.AddSubMenu(new Menu("Single Target", ultimateMenu.Name + ".single"));
                 uSingleMenu.AddItem(
-                    new MenuItem(uSingleMenu.Name + ".min-health", "Min. Target Health %").SetValue(new Slider(10)));
+                    new MenuItem(uSingleMenu.Name + ".min-health", "Min. Target Health %").SetValue(new Slider(15)));
                 uSingleMenu.AddItem(
-                    new MenuItem(uSingleMenu.Name + ".max-allies", "Max. Allies in Range").SetValue(new Slider(3, 0, 4)));
+                    new MenuItem(uSingleMenu.Name + ".max-add-allies", "Max. Additional Allies").SetValue(
+                        new Slider(3, 0, 4)));
                 uSingleMenu.AddItem(
-                    new MenuItem(uSingleMenu.Name + ".max-enemies", "Max. Enemies in Range").SetValue(
-                        new Slider(1, 1, 5)));
+                    new MenuItem(uSingleMenu.Name + ".max-add-enemies", "Max. Additional Enemies").SetValue(
+                        new Slider(0, 0, 4)));
+
+                uSingleMenu.AddItem(
+                    new MenuItem(uSingleMenu.Name + ".range-allies", "Allies Range Check").SetValue(
+                        new Slider(1750, 500, 3000)));
+                uSingleMenu.AddItem(
+                    new MenuItem(uSingleMenu.Name + ".range-enemies", "Enemies Range Check").SetValue(
+                        new Slider(1750, 500, 3000)));
 
                 if (Combo)
                 {
@@ -266,6 +280,10 @@ namespace SFXVladimir.Managers
                 }
                 if (Assisted)
                 {
+                    if (Flash)
+                    {
+                        uSingleMenu.AddItem(new MenuItem(uSingleMenu.Name + ".flash", "Flash").SetValue(false));
+                    }
                     uSingleMenu.AddItem(new MenuItem(uSingleMenu.Name + ".assisted", "Assisted").SetValue(false));
                 }
 
@@ -319,7 +337,7 @@ namespace SFXVladimir.Managers
                 if (mode == UltimateModeType.Flash)
                 {
                     return Flash && Assisted && _menu.Item(_menu.Name + ".ultimate.assisted.enabled").GetValue<bool>() &&
-                           _menu.Item(_menu.Name + ".ultimate.assisted.flash").GetValue<KeyBind>().Active;
+                           _menu.Item(_menu.Name + ".ultimate.flash.hotkey").GetValue<KeyBind>().Active;
                 }
                 if (mode == UltimateModeType.Assisted)
                 {
@@ -342,9 +360,9 @@ namespace SFXVladimir.Managers
             return false;
         }
 
-        private string GetModeString(UltimateModeType mode)
+        private string GetModeString(UltimateModeType mode, bool overrideFlash)
         {
-            if (mode == UltimateModeType.Flash)
+            if (overrideFlash && mode == UltimateModeType.Flash)
             {
                 mode = UltimateModeType.Assisted;
             }
@@ -355,7 +373,7 @@ namespace SFXVladimir.Managers
         {
             if (_menu != null)
             {
-                var enabled = _menu.Item(_menu.Name + ".ultimate." + GetModeString(mode) + ".move-cursor");
+                var enabled = _menu.Item(_menu.Name + ".ultimate." + GetModeString(mode, true) + ".move-cursor");
                 return enabled != null && enabled.GetValue<bool>();
             }
             return false;
@@ -365,22 +383,23 @@ namespace SFXVladimir.Managers
         {
             if (_menu != null)
             {
-                var enabled = _menu.Item(_menu.Name + ".ultimate.single." + GetModeString(mode));
+                var enabled = _menu.Item(_menu.Name + ".ultimate.single." + GetModeString(mode, false));
                 return enabled != null && enabled.GetValue<bool>();
             }
             return false;
         }
 
-        public float GetDamage(Obj_AI_Hero hero, bool single = false)
+        public float GetDamage(Obj_AI_Hero hero, UltimateModeType mode, int hits = 5)
         {
             if (DamageCalculation != null)
             {
                 try
                 {
-                    return DamageCalculation(hero) / 100f *
-                           _menu.Item(_menu.Name + ".ultimate.damage-percent" + (single ? "-single" : string.Empty))
-                               .GetValue<Slider>()
-                               .Value;
+                    var dmgMultiplicator =
+                        _menu.Item(_menu.Name + ".ultimate.damage-percent" + (hits <= 1 ? "-single" : string.Empty))
+                            .GetValue<Slider>()
+                            .Value / 100;
+                    return DamageCalculation(hero, dmgMultiplicator, mode != UltimateModeType.Flash) * dmgMultiplicator;
                 }
                 catch (Exception ex)
                 {
@@ -388,6 +407,11 @@ namespace SFXVladimir.Managers
                 }
             }
             return 0f;
+        }
+
+        public int GetMinHits(UltimateModeType mode)
+        {
+            return _menu.Item(_menu.Name + ".ultimate." + GetModeString(mode, false) + ".min").GetValue<Slider>().Value;
         }
 
         public bool CheckSingle(UltimateModeType mode, Obj_AI_Hero target)
@@ -405,8 +429,8 @@ namespace SFXVladimir.Managers
                     if (Spells != null &&
                         !Spells.Any(
                             s =>
-                                s.Slot != SpellSlot.R && s.IsReady() && s.IsInRange(target) && s.GetDamage(target) > 10 &&
-                                Math.Abs(s.Speed - float.MaxValue) < 1 ||
+                                s.Slot != SpellSlot.R && s.IsReady() && s.IsInRange(target) &&
+                                s.GetDamage(target, 1) > 10 && Math.Abs(s.Speed - float.MaxValue) < 1 ||
                                 s.From.Distance(target.ServerPosition) / s.Speed + s.Delay <= 1.0f))
                     {
                         minHealth = 0;
@@ -416,16 +440,23 @@ namespace SFXVladimir.Managers
                         return false;
                     }
 
-                    var alliesMax = _menu.Item(_menu.Name + ".ultimate.single.max-allies").GetValue<Slider>().Value;
-                    var enemiesMax = _menu.Item(_menu.Name + ".ultimate.single.max-enemies").GetValue<Slider>().Value;
+                    var alliesRange = _menu.Item(_menu.Name + ".ultimate.single.range-allies").GetValue<Slider>().Value;
+                    var alliesMax = _menu.Item(_menu.Name + ".ultimate.single.max-add-allies").GetValue<Slider>().Value;
+
+                    var enemiesRange = _menu.Item(_menu.Name + ".ultimate.single.range-allies").GetValue<Slider>().Value;
+                    var enemiesMax =
+                        _menu.Item(_menu.Name + ".ultimate.single.max-add-enemies").GetValue<Slider>().Value;
 
                     var pos = ObjectManager.Player.Position.Extend(
                         target.Position, ObjectManager.Player.Distance(target) / 2f);
                     var aCount =
-                        GameObjects.AllyHeroes.Count(h => h.IsValid && !h.IsMe && !h.IsDead && h.Distance(pos) <= 1750);
+                        GameObjects.AllyHeroes.Count(
+                            h => h.IsValid && !h.IsDead && !h.IsMe && h.Distance(pos) <= alliesRange);
                     var eCount =
                         GameObjects.EnemyHeroes.Count(
-                            h => h.IsValid && !h.IsDead && h.IsVisible && h.Distance(pos) <= 1750);
+                            h =>
+                                h.IsValid && !h.IsDead && h.IsVisible && h.NetworkId != target.NetworkId &&
+                                h.Distance(pos) <= enemiesRange);
 
                     if (aCount > alliesMax || eCount > enemiesMax)
                     {
@@ -434,7 +465,7 @@ namespace SFXVladimir.Managers
 
                     if (DamageCalculation != null)
                     {
-                        if (GetDamage(target, true) < target.Health)
+                        if (GetDamage(target, mode, 1) < target.Health)
                         {
                             return false;
                         }
@@ -454,7 +485,7 @@ namespace SFXVladimir.Managers
         {
             try
             {
-                var modeString = GetModeString(mode);
+                var modeString = GetModeString(mode, true);
                 if (_menu == null || hits == null || !hits.Any(h => h.IsValidTarget()))
                 {
                     return false;
@@ -473,7 +504,7 @@ namespace SFXVladimir.Managers
                                 hits.Any(
                                     hit =>
                                         HeroListManager.Check("ultimate-force", hit) && hits.Count >= additional &&
-                                        (!dmgCheck || GetDamage(hit, additional == 1) >= hit.Health)))
+                                        (!dmgCheck || GetDamage(hit, mode, additional) >= hit.Health)))
                             {
                                 return true;
                             }
@@ -500,13 +531,12 @@ namespace SFXVladimir.Managers
                         if (DamageCalculation != null &&
                             _menu.Item(_menu.Name + ".ultimate." + modeString + ".damage-check").GetValue<bool>())
                         {
-                            if (hits.All(h => GetDamage(h) < h.Health))
+                            if (hits.All(h => GetDamage(h, mode, hits.Count) < h.Health))
                             {
                                 return false;
                             }
                         }
-                        return hits.Count >=
-                               _menu.Item(_menu.Name + ".ultimate." + modeString + ".min").GetValue<Slider>().Value;
+                        return hits.Count >= GetMinHits(mode);
                     }
                     return true;
                 }

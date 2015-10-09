@@ -37,6 +37,7 @@ using SFXVladimir.Library.Logger;
 using SFXVladimir.Managers;
 using DamageType = SFXVladimir.Enumerations.DamageType;
 using MinionManager = SFXVladimir.Library.MinionManager;
+using MinionOrderTypes = SFXVladimir.Library.MinionOrderTypes;
 using MinionTeam = SFXVladimir.Library.MinionTeam;
 using MinionTypes = SFXVladimir.Library.MinionTypes;
 using Orbwalking = SFXVladimir.Wrappers.Orbwalking;
@@ -51,6 +52,8 @@ namespace SFXVladimir.Champions
     internal class Vladimir : Champion
     {
         private MenuItem _eStacks;
+        private Obj_AI_Minion _lastAaMinion;
+        private float _lastAaMinionEndTime;
         private UltimateManager _ultimate;
 
         protected override ItemFlags ItemFlags
@@ -68,19 +71,18 @@ namespace SFXVladimir.Champions
             GapcloserManager.OnGapcloser += OnEnemyGapcloser;
             Drawing.OnDraw += OnDrawingDraw;
             Orbwalking.OnNonKillableMinion += OnOrbwalkingNonKillableMinion;
+            Orbwalking.AfterAttack += OnOrbwalkingAfterAttack;
         }
 
         protected override void SetupSpells()
         {
             Q = new Spell(SpellSlot.Q, 600f, DamageType.Magical);
-            Q.Range += GameObjects.EnemyHeroes.Select(e => e.BoundingRadius).DefaultIfEmpty(50).Average();
-            Q.SetTargetted(Q.Instance.SData.CastFrame / 30f, Q.Instance.SData.MissileSpeed);
+            Q.Range += GameObjects.EnemyHeroes.Select(e => e.BoundingRadius).DefaultIfEmpty(50).Min();
+            Q.SetTargetted(0.25f, Q.Instance.SData.MissileSpeed);
 
             W = new Spell(SpellSlot.W, 175f, DamageType.Magical);
 
-            E = new Spell(SpellSlot.E, 600f, DamageType.Magical);
-            E.Delay = E.Instance.SData.CastFrame / 30f;
-            E.Width = E.Range;
+            E = new Spell(SpellSlot.E, 600f, DamageType.Magical) { Delay = 0.25f, Width = 600f };
 
             R = new Spell(SpellSlot.R, 700f, DamageType.Magical);
             R.SetSkillshot(0.25f, 175f, float.MaxValue, false, SkillshotType.SkillshotCircle);
@@ -99,9 +101,9 @@ namespace SFXVladimir.Champions
                 InterruptDelay = false,
                 Spells = Spells,
                 DamageCalculation =
-                    hero =>
+                    (hero, resMulti, rangeCheck) =>
                         CalcComboDamage(
-                            hero, Menu.Item(Menu.Name + ".combo.q").GetValue<bool>(),
+                            hero, rangeCheck, Menu.Item(Menu.Name + ".combo.q").GetValue<bool>(),
                             Menu.Item(Menu.Name + ".combo.e").GetValue<bool>(), true)
             };
         }
@@ -192,16 +194,45 @@ namespace SFXVladimir.Champions
             _eStacks = DrawingManager.Add("E Stacks", true);
         }
 
+        private void OnOrbwalkingAfterAttack(AttackableUnit unit, AttackableUnit target)
+        {
+            try
+            {
+                if (unit.IsMe)
+                {
+                    var minion = target as Obj_AI_Minion;
+                    if (minion != null)
+                    {
+                        _lastAaMinion = minion;
+                        _lastAaMinionEndTime = Game.Time + minion.Distance(Player) / Orbwalking.GetMyProjectileSpeed() +
+                                               0.25f;
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Global.Logger.AddItem(new LogItem(ex));
+            }
+        }
+
         private void OnOrbwalkingNonKillableMinion(AttackableUnit unit)
         {
             try
             {
-                if (Menu.Item(Menu.Name + ".lasthit.q-unkillable").GetValue<bool>() && Q.IsReady() && Q.IsInRange(unit))
+                if (Orbwalker.ActiveMode == Orbwalking.OrbwalkingMode.LastHit ||
+                    Orbwalker.ActiveMode == Orbwalking.OrbwalkingMode.LaneClear)
                 {
-                    var target = unit as Obj_AI_Base;
-                    if (target != null && HealthPrediction.GetHealthPrediction(target, (int) (Q.Delay * 1000f)) > 0)
+                    if (!Player.IsWindingUp && Menu.Item(Menu.Name + ".lasthit.q-unkillable").GetValue<bool>() &&
+                        Q.IsReady() && Q.IsInRange(unit))
                     {
-                        Q.CastOnUnit(target);
+                        var target = unit as Obj_AI_Base;
+                        if (target != null &&
+                            (_lastAaMinion == null || target.NetworkId != _lastAaMinion.NetworkId ||
+                             Game.Time > _lastAaMinionEndTime) &&
+                            HealthPrediction.GetHealthPrediction(target, (int) (Q.Delay * 1000f)) > 0)
+                        {
+                            Q.CastOnUnit(target);
+                        }
                     }
                 }
             }
@@ -234,12 +265,17 @@ namespace SFXVladimir.Champions
 
         protected override void OnPostUpdate()
         {
-            if (Orbwalker.ActiveMode == Orbwalking.OrbwalkingMode.LastHit &&
+            if (Orbwalker.ActiveMode == Orbwalking.OrbwalkingMode.LastHit && !Player.IsWindingUp &&
                 Menu.Item(Menu.Name + ".lasthit.q").GetValue<bool>() && Q.IsReady())
             {
                 var m =
                     MinionManager.GetMinions(Q.Range, MinionTypes.All, MinionTeam.NotAlly)
-                        .FirstOrDefault(e => Q.IsKillable(e));
+                        .FirstOrDefault(
+                            e =>
+                                e.HealthPercent <= 75 &&
+                                (_lastAaMinion == null || e.NetworkId != _lastAaMinion.NetworkId ||
+                                 Game.Time > _lastAaMinionEndTime) &&
+                                HealthPrediction.GetHealthPrediction(e, (int) (Q.Delay * 1000f)) < Q.GetDamage(e));
                 if (m != null)
                 {
                     Casting.TargetSkill(m, Q);
@@ -314,6 +350,7 @@ namespace SFXVladimir.Champions
 
         protected override void Combo()
         {
+            var single = false;
             var q = Menu.Item(Menu.Name + ".combo.q").GetValue<bool>() && Q.IsReady();
             var e = Menu.Item(Menu.Name + ".combo.e").GetValue<bool>() && E.IsReady() &&
                     ResourceManager.Check("combo-e");
@@ -325,6 +362,7 @@ namespace SFXVladimir.Champions
                 if (!RLogic(UltimateModeType.Combo, rTarget))
                 {
                     RLogicSingle(UltimateModeType.Combo);
+                    single = true;
                 }
             }
             if (q)
@@ -338,7 +376,7 @@ namespace SFXVladimir.Champions
                     E.Cast();
                 }
             }
-            if (rTarget != null && _ultimate.GetDamage(rTarget) > rTarget.Health)
+            if (rTarget != null && _ultimate.GetDamage(rTarget, UltimateModeType.Combo, single ? 1 : 5) > rTarget.Health)
             {
                 ItemManager.UseComboItems(rTarget);
                 SummonerManager.UseComboSummoners(rTarget);
@@ -353,7 +391,18 @@ namespace SFXVladimir.Champions
 
             if (q)
             {
-                Casting.TargetSkill(Q);
+                var minions = MinionManager.GetMinions(Q.Range, MinionTypes.All, MinionTeam.NotAlly);
+                foreach (var minion in from minion in minions
+                    let damage = Q.GetDamage(minion)
+                    where
+                        minion.HealthPercent <= 75 &&
+                        HealthPrediction.GetHealthPrediction(minion, (int) (Q.Delay * 1000f)) < damage ||
+                        damage > minion.Health * 1.75f
+                    select minion)
+                {
+                    Casting.TargetSkill(minion, Q);
+                    break;
+                }
             }
             if (e)
             {
@@ -364,7 +413,7 @@ namespace SFXVladimir.Champions
             }
         }
 
-        private float CalcComboDamage(Obj_AI_Hero target, bool q, bool e, bool r)
+        private float CalcComboDamage(Obj_AI_Hero target, bool rangeCheck, bool q, bool e, bool r)
         {
             try
             {
@@ -373,22 +422,22 @@ namespace SFXVladimir.Champions
                     return 0;
                 }
                 float damage = 0;
-                if (q && Q.IsInRange(target))
+                if (q && (!rangeCheck || Q.IsInRange(target)))
                 {
                     damage += Q.GetDamage(target) * 2;
                 }
-                if (e && E.IsInRange(target))
+                if (e && (!rangeCheck || E.IsInRange(target)))
                 {
                     damage += E.GetDamage(target) * 2;
                 }
-                if (r && R.IsReady() && R.IsInRange(target, R.Range + R.Width))
+                if (r && R.IsReady() && (!rangeCheck || R.IsInRange(target, R.Range + R.Width)))
                 {
                     damage *= 1.2f;
                     damage += R.GetDamage(target);
                 }
                 damage *= 1.1f;
-                damage += ItemManager.CalculateComboDamage(target);
-                damage += SummonerManager.CalculateComboDamage(target);
+                damage += ItemManager.CalculateComboDamage(target, rangeCheck);
+                damage += SummonerManager.CalculateComboDamage(target, rangeCheck);
                 return damage;
             }
             catch (Exception ex)
@@ -447,15 +496,37 @@ namespace SFXVladimir.Champions
             var q = Menu.Item(Menu.Name + ".lane-clear.q").GetValue<bool>() && Q.IsReady();
             var e = Menu.Item(Menu.Name + ".lane-clear.e").GetValue<bool>() && E.IsReady() &&
                     ResourceManager.Check("lane-clear-e");
-            var eMin = Menu.Item(Menu.Name + ".lane-clear.e-min").GetValue<Slider>().Value;
 
             if (q)
             {
-                Casting.Farm(Q, 1);
+                Casting.Farm(Q, MinionManager.GetMinions(Q.Range), 1);
             }
             if (e)
             {
-                Casting.FarmSelfAoe(E, eMin);
+                Casting.FarmSelfAoe(
+                    E, MinionManager.GetMinions(E.Range),
+                    Menu.Item(Menu.Name + ".lane-clear.e-min").GetValue<Slider>().Value);
+            }
+        }
+
+        protected override void JungleClear()
+        {
+            var q = Menu.Item(Menu.Name + ".lane-clear.q").GetValue<bool>() && Q.IsReady();
+            var e = Menu.Item(Menu.Name + ".lane-clear.e").GetValue<bool>() && E.IsReady();
+
+            if (q)
+            {
+                Casting.Farm(
+                    Q,
+                    MinionManager.GetMinions(Q.Range, MinionTypes.All, MinionTeam.Neutral, MinionOrderTypes.MaxHealth),
+                    1);
+            }
+            if (e)
+            {
+                Casting.FarmSelfAoe(
+                    E,
+                    MinionManager.GetMinions(E.Range, MinionTypes.All, MinionTeam.Neutral, MinionOrderTypes.MaxHealth),
+                    1);
             }
         }
 

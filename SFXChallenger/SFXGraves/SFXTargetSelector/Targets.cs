@@ -24,6 +24,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using LeagueSharp;
 using SFXGraves.Library;
 using SFXGraves.Library.Logger;
@@ -57,13 +58,10 @@ namespace SFXGraves.SFXTargetSelector
         {
             try
             {
-                foreach (var item in Items)
+                foreach (var item in Items.Where(item => item.Visible != !item.Hero.IsVisible))
                 {
-                    if (item.Visible && !item.Hero.IsVisible || !item.Visible && item.Hero.IsVisible)
-                    {
-                        item.Visible = item.Hero.IsVisible;
-                        item.LastVisibleChange = Game.Time;
-                    }
+                    item.Visible = item.Hero.IsVisible;
+                    item.LastVisibleChange = Game.Time;
                 }
             }
             catch (Exception ex)
@@ -78,7 +76,6 @@ namespace SFXGraves.SFXTargetSelector
             {
                 Hero = hero;
                 LastVisibleChange = Game.Time;
-                Visible = false;
             }
 
             public Obj_AI_Hero Hero { get; private set; }

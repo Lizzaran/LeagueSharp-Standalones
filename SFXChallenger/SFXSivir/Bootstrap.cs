@@ -31,6 +31,7 @@ using SFXSivir.Helpers;
 using SFXSivir.Interfaces;
 using SFXSivir.Library;
 using SFXSivir.Library.Logger;
+using SFXSivir.SFXTargetSelector;
 
 #endregion
 
@@ -71,16 +72,12 @@ namespace SFXSivir
 
                         if (_champion != null)
                         {
-                            try
+                            if (Global.Reset.Enabled)
                             {
-                                Update.Check(
-                                    Global.Name, Assembly.GetExecutingAssembly().GetName().Version, Global.UpdatePath,
-                                    10000);
+                                Reset.Force(Global.Name, Global.Reset.MaxAge, Weights.RestoreDefaultWeights);
                             }
-                            catch (Exception ex)
-                            {
-                                Global.Logger.AddItem(new LogItem(ex));
-                            }
+                            Update.Check(
+                                Global.Name, Assembly.GetExecutingAssembly().GetName().Version, Global.UpdatePath, 10000);
                             Core.Init(_champion, 50);
                             Core.Boot();
                         }

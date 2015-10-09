@@ -122,7 +122,6 @@ namespace SFXKalista.Wrappers
         {
             Player = ObjectManager.Player;
             Obj_AI_Base.OnProcessSpellCast += OnProcessSpell;
-            GameObject.OnCreate += MissileClient_OnCreate;
             Obj_AI_Base.OnDoCast += Obj_AI_Base_OnDoCast;
             Spellbook.OnStopCast += SpellbookOnStopCast;
         }
@@ -222,14 +221,14 @@ namespace SFXKalista.Wrappers
         }
 
         /// <summary>
-        ///     Returns the auto-attack range.
+        ///     Returns the auto-attack range of local player with respect to the target.
         /// </summary>
         public static float GetRealAutoAttackRange(AttackableUnit target)
         {
             var result = Player.AttackRange + Player.BoundingRadius;
             if (target.IsValidTarget())
             {
-                result += target.BoundingRadius;
+                return result + target.BoundingRadius;
             }
             return result;
         }
@@ -255,7 +254,7 @@ namespace SFXKalista.Wrappers
         /// </summary>
         public static float GetMyProjectileSpeed()
         {
-            return IsMelee(Player) || Player.ChampionName == "Azir" ||
+            return IsMelee(Player) || Player.ChampionName == "Azir" || Player.ChampionName == "Velkoz" ||
                    Player.ChampionName == "Viktor" && Player.HasBuff("ViktorPowerTransferReturn")
                 ? float.MaxValue
                 : Player.BasicAttack.MissileSpeed;
@@ -365,9 +364,16 @@ namespace SFXKalista.Wrappers
         {
             if (delay.Randomize && Random.Next(0, 101) >= (100 - delay.Probability))
             {
-                var min = (delay.Default / 100f) * delay.MinDelay;
-                var max = (delay.Default / 100f) * delay.MaxDelay;
-                delay.CurrentDelay = Random.Next((int) Math.Min(min, max), (int) Math.Max(min, max) + 1);
+                if (delay.Default > 0)
+                {
+                    var min = (delay.Default / 100f) * delay.MinDelay;
+                    var max = (delay.Default / 100f) * delay.MaxDelay;
+                    delay.CurrentDelay = Random.Next((int) Math.Min(min, max), (int) Math.Max(min, max) + 1);
+                }
+                else
+                {
+                    delay.CurrentDelay = 0;
+                }
             }
             else
             {
@@ -395,17 +401,6 @@ namespace SFXKalista.Wrappers
             bool overrideTimer = false,
             bool randomizeMinDistance = true)
         {
-            var delay = Delays[OrbwalkingDelay.Move];
-
-            if (Utils.GameTimeTickCount - LastMoveCommandT < delay.CurrentDelay && !overrideTimer)
-            {
-                return;
-            }
-
-            SetCurrentDelay(delay);
-
-            LastMoveCommandT = Utils.GameTimeTickCount;
-
             var playerPosition = Player.ServerPosition;
 
             if (playerPosition.Distance(position, true) < holdAreaRadius * holdAreaRadius)
@@ -414,6 +409,7 @@ namespace SFXKalista.Wrappers
                 {
                     Player.IssueOrder(GameObjectOrder.Stop, playerPosition);
                     LastMoveCommandPosition = playerPosition;
+                    LastMoveCommandT = Utils.GameTimeTickCount - 70;
                 }
                 return;
             }
@@ -426,15 +422,17 @@ namespace SFXKalista.Wrappers
                     position, (randomizeMinDistance ? (Random.NextFloat(0.6f, 1) + 0.2f) * _minDistance : _minDistance));
             }
 
+            var angle = 0f;
             var currentPath = Player.GetWaypoints();
-            if (currentPath.Count > 1)
+            if (currentPath.Count > 1 && currentPath.PathLength() > 100)
             {
                 var movePath = Player.GetPath(point);
+
                 if (movePath.Length > 1)
                 {
                     var v1 = currentPath[1] - currentPath[0];
                     var v2 = movePath[1] - movePath[0];
-                    var angle = v1.AngleBetween(v2.To2D());
+                    angle = v1.AngleBetween(v2.To2D());
                     var distance = movePath.Last().To2D().Distance(currentPath.Last(), true);
 
                     if ((angle < 10 && distance < 500 * 500) || distance < 50 * 50)
@@ -444,8 +442,23 @@ namespace SFXKalista.Wrappers
                 }
             }
 
+            if (angle >= 60 && Utils.GameTimeTickCount - LastMoveCommandT < 60)
+            {
+                return;
+            }
+
+            var delay = Delays[OrbwalkingDelay.Move];
+
+            if (Utils.GameTimeTickCount - LastMoveCommandT < delay.CurrentDelay && !overrideTimer && angle < 60)
+            {
+                return;
+            }
+
+            SetCurrentDelay(delay);
+
             Player.IssueOrder(GameObjectOrder.MoveTo, point);
             LastMoveCommandPosition = point;
+            LastMoveCommandT = Utils.GameTimeTickCount;
         }
 
         /// <summary>
@@ -486,6 +499,7 @@ namespace SFXKalista.Wrappers
                             ResetAutoAttackTimer();
                         }
 
+                        LastMoveCommandT = 0;
                         _lastTarget = target;
                         return;
                     }
@@ -537,16 +551,6 @@ namespace SFXKalista.Wrappers
             _missileLaunched = true;
         }
 
-        private static void MissileClient_OnCreate(GameObject sender, EventArgs args)
-        {
-            var missile = sender as MissileClient;
-            if (missile != null && missile.SpellCaster.IsMe && IsAutoAttack(missile.SData.Name))
-            {
-                _missileLaunched = true;
-                FireAfterAttack(missile.SpellCaster, missile.Target as AttackableUnit);
-            }
-        }
-
         private static void OnProcessSpell(Obj_AI_Base unit, GameObjectProcessSpellCastEventArgs spell)
         {
             try
@@ -569,13 +573,13 @@ namespace SFXKalista.Wrappers
                     LastAaTick = Utils.GameTimeTickCount - Game.Ping / 2;
                     _missileLaunched = false;
 
-                    var baseObj = spell.Target as Obj_AI_Base;
-                    if (baseObj != null)
+                    var target = spell.Target as Obj_AI_Base;
+                    if (target != null)
                     {
-                        if (baseObj.IsValid)
+                        if (target.IsValid)
                         {
-                            FireOnTargetSwitch(baseObj);
-                            _lastTarget = baseObj;
+                            FireOnTargetSwitch(target);
+                            _lastTarget = target;
                         }
                     }
                 }
@@ -672,28 +676,27 @@ namespace SFXKalista.Wrappers
                 _config.AddSubMenu(attackables);
 
                 var delays = new Menu("Delays", "Delays");
-                delays.AddItem(new MenuItem("ExtraWindup", "Windup Delay").SetShared().SetValue(new Slider(70, 0, 200)));
+                delays.AddItem(new MenuItem("ExtraWindup", "Windup").SetShared().SetValue(new Slider(70, 0, 200)));
 
-                delays.AddItem(
-                    new MenuItem("MovementDelay", "Movement Delay").SetShared().SetValue(new Slider(70, 0, 250)))
+                delays.AddItem(new MenuItem("MovementDelay", "Movement").SetShared().SetValue(new Slider(70, 0, 250)))
                     .ValueChanged += (sender, args) => SetDelay(args.GetNewValue<Slider>().Value, OrbwalkingDelay.Move);
 
-                delays.AddItem(new MenuItem("AttackDelay", "Attack Delay").SetShared().SetValue(new Slider(0, 0, 250)))
+                delays.AddItem(new MenuItem("AttackDelay", "Attack").SetShared().SetValue(new Slider(0, 0, 250)))
                     .ValueChanged +=
                     (sender, args) => SetDelay(args.GetNewValue<Slider>().Value, OrbwalkingDelay.Attack);
 
-                delays.AddItem(new MenuItem("FarmDelay", "Farm Delay").SetShared().SetValue(new Slider(0, 0, 200)));
+                delays.AddItem(new MenuItem("FarmDelay", "Farm").SetShared().SetValue(new Slider(25, 0, 200)));
 
                 _config.AddSubMenu(delays);
 
                 var delayMovement = new Menu("Movement Humanizer", "Movement");
                 delayMovement.AddItem(
-                    new MenuItem("MovementMinDelay", "Min. Multi % Delay").SetShared()
-                        .SetValue(new Slider(170, 100, 300))).ValueChanged +=
+                    new MenuItem("MovementMinDelay", "Min. Multi %").SetShared().SetValue(new Slider(170, 100, 300)))
+                    .ValueChanged +=
                     (sender, args) => SetMinDelay(args.GetNewValue<Slider>().Value, OrbwalkingDelay.Move);
                 delayMovement.AddItem(
-                    new MenuItem("MovementMaxDelay", "Max. Multi % Delay").SetShared()
-                        .SetValue(new Slider(220, 100, 300))).ValueChanged +=
+                    new MenuItem("MovementMaxDelay", "Max. Multi %").SetShared().SetValue(new Slider(220, 100, 300)))
+                    .ValueChanged +=
                     (sender, args) => SetMaxDelay(args.GetNewValue<Slider>().Value, OrbwalkingDelay.Move);
                 delayMovement.AddItem(
                     new MenuItem("MovementProbability", "Probability %").SetShared().SetValue(new Slider(30)))
@@ -705,11 +708,11 @@ namespace SFXKalista.Wrappers
 
                 var delayAttack = new Menu("Attacks Humanizer", "Attack");
                 delayAttack.AddItem(
-                    new MenuItem("AttackMinDelay", "Min. Multi % Delay").SetShared().SetValue(new Slider(170, 100, 300)))
+                    new MenuItem("AttackMinDelay", "Min. Multi %").SetShared().SetValue(new Slider(170, 100, 300)))
                     .ValueChanged +=
                     (sender, args) => SetMinDelay(args.GetNewValue<Slider>().Value, OrbwalkingDelay.Attack);
                 delayAttack.AddItem(
-                    new MenuItem("AttackMaxDelay", "Max. Multi % Delay").SetShared().SetValue(new Slider(220, 100, 300)))
+                    new MenuItem("AttackMaxDelay", "Max. Multi %").SetShared().SetValue(new Slider(220, 100, 300)))
                     .ValueChanged +=
                     (sender, args) => SetMaxDelay(args.GetNewValue<Slider>().Value, OrbwalkingDelay.Attack);
                 delayAttack.AddItem(
@@ -906,12 +909,6 @@ namespace SFXKalista.Wrappers
                     }
                 }
 
-                //Forced target
-                if (_forcedTarget.IsValidTarget() && InAutoAttackRange(_forcedTarget))
-                {
-                    return _forcedTarget;
-                }
-
                 var minions = new List<Obj_AI_Minion>();
                 if (ActiveMode != OrbwalkingMode.None && ActiveMode != OrbwalkingMode.Flee)
                 {
@@ -933,7 +930,6 @@ namespace SFXKalista.Wrappers
                         var t = (int) (Player.AttackCastDelay * 1000) - 100 + Game.Ping / 2 +
                                 1000 * (int) Math.Max(0, Player.Distance(minion) - Player.BoundingRadius) /
                                 (int) GetMyProjectileSpeed();
-
                         if (minion.MaxHealth <= 10)
                         {
                             if (minion.Health <= 1)
@@ -955,6 +951,12 @@ namespace SFXKalista.Wrappers
                             }
                         }
                     }
+                }
+
+                //Forced target
+                if (_forcedTarget.IsValidTarget() && InAutoAttackRange(_forcedTarget))
+                {
+                    return _forcedTarget;
                 }
 
                 /* turrets / inhibitors / nexus */
@@ -986,7 +988,7 @@ namespace SFXKalista.Wrappers
                 if (ActiveMode != OrbwalkingMode.LastHit)
                 {
                     var target = TargetSelector.GetTarget(-1, DamageType.Physical);
-                    if (target.IsValidTarget())
+                    if (target.IsValidTarget() && InAutoAttackRange(target))
                     {
                         return target;
                     }
@@ -1052,7 +1054,7 @@ namespace SFXKalista.Wrappers
 
                 if (result == null && ActiveMode == OrbwalkingMode.Combo)
                 {
-                    if (!GameObjects.EnemyHeroes.Any(e => e.IsValidTarget(GetRealAutoAttackRange(e) * 1.2f)))
+                    if (!GameObjects.EnemyHeroes.Any(e => e.IsValidTarget(GetRealAutoAttackRange(e) * 1.25f)))
                     {
                         return minions.FirstOrDefault();
                     }

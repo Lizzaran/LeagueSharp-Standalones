@@ -32,10 +32,10 @@ using SFXCassiopeia.Args;
 using SFXCassiopeia.Enumerations;
 using SFXCassiopeia.Helpers;
 using SFXCassiopeia.Library;
-using SFXCassiopeia.Library.Extensions.NET;
 using SFXCassiopeia.Library.Logger;
 using SFXCassiopeia.Managers;
 using SFXCassiopeia.SFXTargetSelector;
+using SharpDX;
 using DamageType = SFXCassiopeia.Enumerations.DamageType;
 using MinionManager = SFXCassiopeia.Library.MinionManager;
 using MinionOrderTypes = SFXCassiopeia.Library.MinionOrderTypes;
@@ -51,9 +51,12 @@ namespace SFXCassiopeia.Champions
 {
     internal class Cassiopeia : TChampion
     {
+        private Obj_AI_Minion _lastAaMinion;
+        private float _lastAaMinionEndTime;
         private int _lastECast;
         private float _lastEEndTime;
         private float _lastPoisonClearDelay;
+        private Vector2 _lastPoisonClearPosition;
         private float _lastQPoisonDelay;
         private Obj_AI_Base _lastQPoisonT;
         private UltimateManager _ultimate;
@@ -71,6 +74,7 @@ namespace SFXCassiopeia.Champions
 
         protected override void OnLoad()
         {
+            Orbwalking.AfterAttack += OnOrbwalkingAfterAttack;
             Orbwalking.BeforeAttack += OnOrbwalkingBeforeAttack;
             Interrupter2.OnInterruptableTarget += OnInterruptableTarget;
             GapcloserManager.OnGapcloser += OnEnemyGapcloser;
@@ -79,10 +83,10 @@ namespace SFXCassiopeia.Champions
         protected override void SetupSpells()
         {
             Q = new Spell(SpellSlot.Q, 850f, DamageType.Magical);
-            Q.SetSkillshot(0.4f, 60f, float.MaxValue, false, SkillshotType.SkillshotCircle);
+            Q.SetSkillshot(0.3f, 50f, float.MaxValue, false, SkillshotType.SkillshotCircle);
 
             W = new Spell(SpellSlot.W, 850f, DamageType.Magical);
-            W.SetSkillshot(0.7f, 125f, 2500f, false, SkillshotType.SkillshotCircle);
+            W.SetSkillshot(0.5f, 125f, 2500f, false, SkillshotType.SkillshotCircle);
 
             E = new Spell(SpellSlot.E, 700f, DamageType.Magical);
             E.SetTargetted(0.2f, 1700f);
@@ -105,9 +109,9 @@ namespace SFXCassiopeia.Champions
                 InterruptDelay = false,
                 Spells = Spells,
                 DamageCalculation =
-                    hero =>
+                    (hero, resMulti, rangeCheck) =>
                         CalcComboDamage(
-                            hero, Menu.Item(Menu.Name + ".combo.q").GetValue<bool>(),
+                            hero, resMulti, rangeCheck, Menu.Item(Menu.Name + ".combo.q").GetValue<bool>(),
                             Menu.Item(Menu.Name + ".combo.w").GetValue<bool>(),
                             Menu.Item(Menu.Name + ".combo.e").GetValue<bool>(), true)
             };
@@ -136,6 +140,7 @@ namespace SFXCassiopeia.Champions
                     { "W", HitChance.High },
                     { "R", HitChance.VeryHigh }
                 });
+            comboMenu.AddItem(new MenuItem(comboMenu.Name + ".aa", "Use AutoAttacks").SetValue(false));
             comboMenu.AddItem(new MenuItem(comboMenu.Name + ".q", "Use Q").SetValue(true));
             comboMenu.AddItem(new MenuItem(comboMenu.Name + ".w", "Use W").SetValue(true));
             comboMenu.AddItem(new MenuItem(comboMenu.Name + ".e", "Use E").SetValue(true));
@@ -151,6 +156,7 @@ namespace SFXCassiopeia.Champions
                 {
                     DefaultValue = 30
                 });
+            harassMenu.AddItem(new MenuItem(harassMenu.Name + ".aa", "Use AutoAttacks").SetValue(false));
             harassMenu.AddItem(new MenuItem(harassMenu.Name + ".q", "Use Q").SetValue(true));
             harassMenu.AddItem(new MenuItem(harassMenu.Name + ".w", "Use W").SetValue(true));
             harassMenu.AddItem(new MenuItem(harassMenu.Name + ".e", "Use E").SetValue(true));
@@ -164,7 +170,8 @@ namespace SFXCassiopeia.Champions
                     Advanced = true,
                     MaxValue = 101,
                     LevelRanges = new SortedList<int, int> { { 1, 6 }, { 6, 12 }, { 12, 18 } },
-                    DefaultValues = new List<int> { 50, 30, 30 }
+                    DefaultValues = new List<int> { 50, 30, 30 },
+                    IgnoreJungleOption = true
                 });
             laneclearMenu.AddItem(new MenuItem(laneclearMenu.Name + ".aa", "Use AutoAttacks").SetValue(true));
             laneclearMenu.AddItem(new MenuItem(laneclearMenu.Name + ".q", "Use Q").SetValue(true));
@@ -193,7 +200,7 @@ namespace SFXCassiopeia.Champions
             killstealMenu.AddItem(new MenuItem(killstealMenu.Name + ".e-poison", "Use E Poison Only").SetValue(true));
 
             var miscMenu = Menu.AddSubMenu(new Menu("Misc", Menu.Name + ".miscellaneous"));
-            DelayManager.AddToMenu(miscMenu, "e-delay", "E", 250, 0, 1000);
+            DelayManager.AddToMenu(miscMenu, "e-delay", "E", 420, 0, 1000);
 
             var qGapcloserMenu = miscMenu.AddSubMenu(new Menu("Q Gapcloser", miscMenu.Name + "q-gapcloser"));
             GapcloserManager.AddToMenu(
@@ -284,7 +291,8 @@ namespace SFXCassiopeia.Champions
                         MinionManager.GetMinions(Player.ServerPosition, E.Range, MinionTypes.All, MinionTeam.NotAlly)
                             .FirstOrDefault(
                                 e =>
-                                    e.Health < E.GetDamage(e) - 5 &&
+                                    (_lastAaMinion == null || e.NetworkId != _lastAaMinion.NetworkId ||
+                                     Game.Time > _lastAaMinionEndTime) && e.Health < E.GetDamage(e) - 5 &&
                                     (ePoison && GetPoisonBuffEndTime(e) > E.ArrivalTime(e) || eHit));
                     if (m != null)
                     {
@@ -305,59 +313,42 @@ namespace SFXCassiopeia.Champions
                 var targets =
                     Targets.Where(
                         t =>
-                            t.Distance(Player) < R.Range + SummonerManager.Flash.Range && !t.IsDashing() &&
+                            t.Distance(Player) < (R.Range + R.Width + SummonerManager.Flash.Range) * 1.5f &&
+                            !t.IsDashing() &&
                             (t.IsFacing(Player)
                                 ? (t.Distance(Player))
-                                : (Prediction.GetPrediction(t, R.Delay + 0.3f).UnitPosition.Distance(Player.Position))) >
-                            R.Range * 1.025f);
+                                : (R.GetPrediction(t).UnitPosition.Distance(Player.Position))) > R.Range);
                 foreach (var target in targets)
                 {
                     var flashPos = Player.Position.Extend(target.Position, SummonerManager.Flash.Range);
-                    var pred =
-                        Prediction.GetPrediction(
-                            new PredictionInput
-                            {
-                                Aoe = true,
-                                Collision = false,
-                                CollisionObjects = new[] { CollisionableObjects.YasuoWall },
-                                From = flashPos,
-                                RangeCheckFrom = flashPos,
-                                Delay = R.Delay + 0.3f,
-                                Range = R.Range,
-                                Speed = R.Speed,
-                                Radius = R.Width,
-                                Type = R.Type,
-                                Unit = target
-                            });
-                    if (pred.Hitchance >= R.GetHitChance("combo"))
+                    var maxHits = GetMaxRHits(HitChance.High, flashPos);
+                    if (maxHits.Item1.Count > 0)
                     {
-                        R.UpdateSourcePosition(flashPos, flashPos);
-                        var hits = GameObjects.EnemyHeroes.Where(enemy => R.WillHit(enemy, pred.CastPosition)).ToList();
-                        if (_ultimate.Check(UltimateModeType.Flash, hits))
+                        if (_ultimate.Check(UltimateModeType.Flash, maxHits.Item1))
                         {
                             if (
                                 R.Cast(
                                     Player.Position.Extend(
-                                        pred.CastPosition, -(Player.Position.Distance(pred.CastPosition) * 2)), true))
+                                        maxHits.Item2, -(Player.Position.Distance(maxHits.Item2) * 2)), true))
                             {
-                                Utility.DelayAction.Add(300, () => SummonerManager.Flash.Cast(flashPos));
+                                Utility.DelayAction.Add(
+                                    300 + (Game.Ping / 2), () => SummonerManager.Flash.Cast(flashPos));
                             }
                         }
                         else if (_ultimate.ShouldSingle(UltimateModeType.Flash))
                         {
                             if (
-                                hits.Where(hit => _ultimate.CheckSingle(UltimateModeType.Flash, hit))
+                                maxHits.Item1.Where(hit => _ultimate.CheckSingle(UltimateModeType.Flash, hit))
                                     .Any(
                                         hit =>
                                             R.Cast(
                                                 Player.Position.Extend(
-                                                    pred.CastPosition,
-                                                    -(Player.Position.Distance(pred.CastPosition) * 2)), true)))
+                                                    maxHits.Item2, -(Player.Position.Distance(maxHits.Item2) * 2)), true)))
                             {
-                                Utility.DelayAction.Add(300, () => SummonerManager.Flash.Cast(flashPos));
+                                Utility.DelayAction.Add(
+                                    300 + (Game.Ping / 2), () => SummonerManager.Flash.Cast(flashPos));
                             }
                         }
-                        R.UpdateSourcePosition();
                     }
                 }
             }
@@ -397,6 +388,27 @@ namespace SFXCassiopeia.Champions
             }
         }
 
+        private void OnOrbwalkingAfterAttack(AttackableUnit unit, AttackableUnit target)
+        {
+            try
+            {
+                if (unit.IsMe)
+                {
+                    var minion = target as Obj_AI_Minion;
+                    if (minion != null)
+                    {
+                        _lastAaMinion = minion;
+                        _lastAaMinionEndTime = Game.Time + minion.Distance(Player) / Orbwalking.GetMyProjectileSpeed() +
+                                               0.25f;
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Global.Logger.AddItem(new LogItem(ex));
+            }
+        }
+
         private void OnOrbwalkingBeforeAttack(Orbwalking.BeforeAttackEventArgs args)
         {
             try
@@ -406,14 +418,23 @@ namespace SFXCassiopeia.Champions
                     (Orbwalker.ActiveMode == Orbwalking.OrbwalkingMode.Combo ||
                      Orbwalker.ActiveMode == Orbwalking.OrbwalkingMode.Mixed))
                 {
-                    args.Process = Q.Instance.ManaCost > Player.Mana && W.Instance.ManaCost > Player.Mana &&
-                                   (E.Instance.ManaCost > Player.Mana || GetPoisonBuffEndTime(t) < E.ArrivalTime(t)) ||
-                                   !Q.IsReady() && !E.IsReady();
+                    args.Process =
+                        Menu.Item(
+                            Menu.Name + "." +
+                            (Orbwalker.ActiveMode == Orbwalking.OrbwalkingMode.Combo ? "combo" : "harass") + ".aa")
+                            .GetValue<bool>();
+                    if (!args.Process)
+                    {
+                        var poison = GetPoisonBuffEndTime(t);
+                        args.Process = (!Q.IsReady() || Q.Instance.ManaCost > Player.Mana) &&
+                                       ((!E.IsReady() && Game.Time - _lastECast > 3) ||
+                                        E.Instance.ManaCost > Player.Mana || poison <= 0 || poison < E.ArrivalTime(t));
+                    }
                 }
                 if (Orbwalker.ActiveMode == Orbwalking.OrbwalkingMode.LaneClear)
                 {
                     args.Process = Menu.Item(Menu.Name + ".lane-clear.aa").GetValue<bool>();
-                    if (args.Process == false)
+                    if (!args.Process)
                     {
                         var m = args.Target as Obj_AI_Minion;
                         if (m != null && (_lastEEndTime < Game.Time || E.IsReady()) ||
@@ -526,6 +547,7 @@ namespace SFXCassiopeia.Champions
 
         protected override void Combo()
         {
+            var single = false;
             var q = Menu.Item(Menu.Name + ".combo.q").GetValue<bool>() && Q.IsReady();
             var w = Menu.Item(Menu.Name + ".combo.w").GetValue<bool>() && W.IsReady();
             var e = Menu.Item(Menu.Name + ".combo.e").GetValue<bool>() && E.IsReady();
@@ -548,17 +570,24 @@ namespace SFXCassiopeia.Champions
                 if (!RLogic(UltimateModeType.Combo, R.GetHitChance("combo")))
                 {
                     RLogicSingle(UltimateModeType.Combo, R.GetHitChance("combo"));
+                    single = true;
                 }
             }
             var target = Targets.FirstOrDefault(t => t.IsValidTarget(R.Range));
-            if (target != null && _ultimate.GetDamage(target) > target.Health)
+            if (target != null && _ultimate.GetDamage(target, UltimateModeType.Combo, single ? 1 : 5) > target.Health)
             {
                 ItemManager.UseComboItems(target);
                 SummonerManager.UseComboSummoners(target);
             }
         }
 
-        private float CalcComboDamage(Obj_AI_Hero target, bool q, bool w, bool e, bool r)
+        private float CalcComboDamage(Obj_AI_Hero target,
+            float resMulti,
+            bool rangeCheck,
+            bool q,
+            bool w,
+            bool e,
+            bool r)
         {
             try
             {
@@ -570,13 +599,9 @@ namespace SFXCassiopeia.Champions
                 var damage = 0f;
                 var totalMana = 0f;
 
-                var manaMulti = (GameObjects.EnemyHeroes.Count(x => x.IsValidTarget(2000)) == 1
-                    ? 100
-                    : _ultimate.DamagePercent) / 100f;
-
-                if (r && R.IsReady() && R.IsInRange(target))
+                if (r && R.IsReady() && (!rangeCheck || R.IsInRange(target)))
                 {
-                    var rMana = R.ManaCost * manaMulti;
+                    var rMana = R.ManaCost * resMulti;
                     if (totalMana + rMana <= Player.Mana)
                     {
                         totalMana += rMana;
@@ -584,27 +609,27 @@ namespace SFXCassiopeia.Champions
                     }
                 }
 
-                if (q && Q.IsReady() && Q.IsInRange(target))
+                if (q && Q.IsReady() && (!rangeCheck || Q.IsInRange(target)))
                 {
-                    var qMana = Q.ManaCost * manaMulti;
+                    var qMana = Q.ManaCost * resMulti;
                     if (totalMana + qMana <= Player.Mana)
                     {
                         totalMana += qMana;
                         damage += Q.GetDamage(target);
                     }
                 }
-                else if (w && W.IsReady() && W.IsInRange(target))
+                else if (w && W.IsReady() && (!rangeCheck || W.IsInRange(target)))
                 {
-                    var wMana = W.ManaCost * manaMulti;
+                    var wMana = W.ManaCost * resMulti;
                     if (totalMana + wMana <= Player.Mana)
                     {
                         totalMana += wMana;
                         damage += W.GetDamage(target);
                     }
                 }
-                if (e && E.IsReady(3000) && E.IsInRange(target))
+                if (e && E.IsReady(3000) && (!rangeCheck || E.IsInRange(target)))
                 {
-                    var eMana = E.ManaCost * manaMulti;
+                    var eMana = E.ManaCost * resMulti;
                     var eDamage = E.GetDamage(target);
                     var count = target.IsNearTurret() && !target.IsFacing(Player) ||
                                 target.IsNearTurret() && Player.HealthPercent <= 35 || !R.IsReady()
@@ -621,8 +646,8 @@ namespace SFXCassiopeia.Champions
                     }
                 }
 
-                damage += ItemManager.CalculateComboDamage(target);
-                damage += SummonerManager.CalculateComboDamage(target);
+                damage += ItemManager.CalculateComboDamage(target, rangeCheck);
+                damage += SummonerManager.CalculateComboDamage(target, rangeCheck);
                 return damage;
             }
             catch (Exception ex)
@@ -630,6 +655,71 @@ namespace SFXCassiopeia.Champions
                 Global.Logger.AddItem(new LogItem(ex));
             }
             return 0;
+        }
+
+        private Tuple<List<Obj_AI_Hero>, Vector3> GetMaxRHits(HitChance hitChance, Vector3 fromCheck = default(Vector3))
+        {
+            if (fromCheck.Equals(default(Vector3)))
+            {
+                fromCheck = ObjectManager.Player.Position;
+            }
+
+            var input = new PredictionInput
+            {
+                Collision = true,
+                CollisionObjects = new[] { CollisionableObjects.YasuoWall },
+                From = fromCheck,
+                RangeCheckFrom = fromCheck,
+                Type = R.Type,
+                Radius = R.Width,
+                Delay = R.Delay,
+                Speed = R.Speed,
+                Range = R.Range,
+                Aoe = true
+            };
+
+            var castPosition = Vector3.Zero;
+            var totalHits = new List<Obj_AI_Hero>();
+            try
+            {
+                var positions = new List<CPrediction.Position>();
+                foreach (var t in GameObjects.EnemyHeroes)
+                {
+                    if (t.IsValidTarget(R.Range * 1.5f, true, fromCheck))
+                    {
+                        input.Unit = t;
+                        var prediction = Prediction.GetPrediction(input);
+                        if (prediction.Hitchance >= hitChance)
+                        {
+                            positions.Add(new CPrediction.Position(t, prediction.UnitPosition));
+                        }
+                    }
+                }
+                var circle = new Geometry.Polygon.Circle(fromCheck, R.Range).Points;
+                foreach (var point in circle)
+                {
+                    var hits = new List<Obj_AI_Hero>();
+                    foreach (var position in positions)
+                    {
+                        R.UpdateSourcePosition(fromCheck, fromCheck);
+                        if (R.WillHit(position.UnitPosition, point.To3D()))
+                        {
+                            hits.Add(position.Hero);
+                        }
+                        R.UpdateSourcePosition();
+                    }
+                    if (hits.Count > totalHits.Count)
+                    {
+                        castPosition = point.To3D();
+                        totalHits = hits;
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Global.Logger.AddItem(new LogItem(ex));
+            }
+            return new Tuple<List<Obj_AI_Hero>, Vector3>(totalHits, castPosition);
         }
 
         private void RLogicSingle(UltimateModeType mode, HitChance hitChance, bool face = true)
@@ -663,18 +753,13 @@ namespace SFXCassiopeia.Champions
             {
                 if (_ultimate.IsActive(mode))
                 {
-                    foreach (var target in Targets.Where(t => R.CanCast(t)))
+                    var maxHits = GetMaxRHits(hitChance);
+                    if (maxHits.Item1.Count > 0 && !maxHits.Item2.Equals(Vector3.Zero))
                     {
-                        var pred = R.GetPrediction(target, true);
-                        if (pred.Hitchance >= hitChance)
+                        if (_ultimate.Check(mode, maxHits.Item1))
                         {
-                            var hits =
-                                GameObjects.EnemyHeroes.Where(enemy => R.WillHit(enemy, pred.CastPosition)).ToList();
-                            if (_ultimate.Check(mode, hits))
-                            {
-                                R.Cast(pred.CastPosition);
-                                return true;
-                            }
+                            R.Cast(maxHits.Item2);
+                            return true;
                         }
                     }
                 }
@@ -719,7 +804,7 @@ namespace SFXCassiopeia.Champions
                         t =>
                             W.CanCast(t) &&
                             ((_lastQPoisonDelay < Game.Time && GetPoisonBuffEndTime(t) < W.Delay * 1.2 ||
-                              _lastQPoisonT.NetworkId != t.NetworkId) ||
+                              (_lastQPoisonT == null || _lastQPoisonT.NetworkId != t.NetworkId)) ||
                              (HeroListManager.Check("w-fleeing", t) && BestTargetOnlyManager.Check("w-fleeing", W, t) &&
                               !t.IsFacing(Player) && t.IsMoving && t.Distance(Player) > 150)));
                 if (ts != null)
@@ -782,7 +867,8 @@ namespace SFXCassiopeia.Champions
                     target.Buffs.Where(buff => buff.Type == BuffType.Poison)
                         .OrderByDescending(buff => buff.EndTime - Game.Time)
                         .Select(buff => buff.EndTime)
-                        .FirstOrDefault();
+                        .DefaultIfEmpty(0)
+                        .Max();
                 return buffEndTime;
             }
             catch (Exception ex)
@@ -794,23 +880,24 @@ namespace SFXCassiopeia.Champions
 
         protected override void LaneClear()
         {
-            var q = Menu.Item(Menu.Name + ".lane-clear.q").GetValue<bool>() && Q.IsReady();
-            var w = Menu.Item(Menu.Name + ".lane-clear.w").GetValue<bool>() && W.IsReady();
+            if (!ResourceManager.Check("lane-clear"))
+            {
+                return;
+            }
 
-            if (Menu.Item(Menu.Name + ".lane-clear.e").GetValue<bool>() && E.IsReady() &&
-                ResourceManager.Check("lane-clear") && DelayManager.Check("e-delay", _lastECast))
+            var useQ = Menu.Item(Menu.Name + ".lane-clear.q").GetValue<bool>() && Q.IsReady();
+            var useW = Menu.Item(Menu.Name + ".lane-clear.w").GetValue<bool>() && W.IsReady();
+            var useE = Menu.Item(Menu.Name + ".lane-clear.e").GetValue<bool>() && E.IsReady() &&
+                       DelayManager.Check("e-delay", _lastECast);
+
+            if (useE)
             {
                 var minion =
-                    MinionManager.GetMinions(
-                        Player.ServerPosition, E.Range, MinionTypes.All, MinionTeam.NotAlly, MinionOrderTypes.MaxHealth)
-                        .Where(
+                    MinionManager.GetMinions(Player.ServerPosition, E.Range)
+                        .FirstOrDefault(
                             e =>
                                 GetPoisonBuffEndTime(e) > E.ArrivalTime(e) &&
-                                (e.Team == GameObjectTeam.Neutral ||
-                                 (e.Health > E.GetDamage(e) * 2 || e.Health < E.GetDamage(e) - 5)))
-                        .OrderByDescending(
-                            m => m.CharData.BaseSkinName.Contains("MinionSiege", StringComparison.OrdinalIgnoreCase))
-                        .FirstOrDefault();
+                                (e.Health > E.GetDamage(e) * 2 || e.Health < E.GetDamage(e) - 5));
                 if (minion != null)
                 {
                     _lastEEndTime = Game.Time + E.ArrivalTime(minion) + 0.1f;
@@ -819,50 +906,128 @@ namespace SFXCassiopeia.Champions
                 }
             }
 
-            if (q || w)
+            if (useQ || useW)
             {
                 var minions =
                     MinionManager.GetMinions(Player.ServerPosition, Q.Range + Q.Width)
                         .Where(e => GetPoisonBuffEndTime(e) < Q.Delay * 1.1)
-                        .OrderByDescending(
-                            m => m.CharData.BaseSkinName.Contains("MinionSiege", StringComparison.OrdinalIgnoreCase))
                         .ToList();
                 if (minions.Any())
                 {
-                    if (q)
+                    if (useQ)
                     {
                         var prediction = Q.GetCircularFarmLocation(minions, Q.Width + 30);
-                        if (prediction.MinionsHit > 1 && _lastPoisonClearDelay < Game.Time)
+                        if (prediction.MinionsHit > 1 && Game.Time > _lastPoisonClearDelay ||
+                            _lastPoisonClearPosition.Distance(prediction.Position) > W.Width * 1.1f)
                         {
-                            _lastPoisonClearDelay = Game.Time + Q.Delay;
-                            Q.Cast(prediction.Position);
+                            var mP =
+                                minions.Count(
+                                    p =>
+                                        p.Distance(prediction.Position) < (Q.Width + 30) &&
+                                        GetPoisonBuffEndTime(p) >= 0.5f);
+                            if (prediction.MinionsHit - mP > 1)
+                            {
+                                _lastPoisonClearDelay = Game.Time + Q.Delay + 1;
+                                _lastPoisonClearPosition = prediction.Position;
+                                Q.Cast(prediction.Position);
+                            }
                         }
                     }
-                    if (w)
+                    if (useW)
                     {
                         var prediction = W.GetCircularFarmLocation(minions, W.Width + 50);
-                        if (prediction.MinionsHit > 2 && _lastPoisonClearDelay < Game.Time)
+                        if (prediction.MinionsHit > 2 &&
+                            (Game.Time > _lastPoisonClearDelay ||
+                             _lastPoisonClearPosition.Distance(prediction.Position) > Q.Width * 1.1f))
                         {
-                            _lastPoisonClearDelay = Game.Time + W.Delay;
-                            W.Cast(prediction.Position);
+                            var mP =
+                                minions.Count(
+                                    p =>
+                                        p.Distance(prediction.Position) < (W.Width + 50) &&
+                                        GetPoisonBuffEndTime(p) >= 0.5f);
+                            if (prediction.MinionsHit - mP > 1)
+                            {
+                                _lastPoisonClearDelay = Game.Time + W.Delay + 2;
+                                _lastPoisonClearPosition = prediction.Position;
+                                W.Cast(prediction.Position);
+                            }
                         }
                     }
                 }
-                else
+            }
+        }
+
+        protected override void JungleClear()
+        {
+            if (!ResourceManager.Check("lane-clear") && !ResourceManager.IgnoreJungle("lane-clear"))
+            {
+                return;
+            }
+
+            var useQ = Menu.Item(Menu.Name + ".lane-clear.q").GetValue<bool>() && Q.IsReady();
+            var useW = Menu.Item(Menu.Name + ".lane-clear.w").GetValue<bool>() && W.IsReady();
+            var useE = Menu.Item(Menu.Name + ".lane-clear.e").GetValue<bool>() && E.IsReady() &&
+                       DelayManager.Check("e-delay", _lastECast);
+
+            if (useE)
+            {
+                var minion =
+                    MinionManager.GetMinions(
+                        Player.ServerPosition, E.Range, MinionTypes.All, MinionTeam.Neutral, MinionOrderTypes.MaxHealth)
+                        .FirstOrDefault(e => GetPoisonBuffEndTime(e) > E.ArrivalTime(e));
+                if (minion != null)
                 {
-                    var creep =
-                        MinionManager.GetMinions(
-                            Player.ServerPosition, Q.Range + Q.Width, MinionTypes.All, MinionTeam.Neutral,
-                            MinionOrderTypes.MaxHealth).FirstOrDefault(e => GetPoisonBuffEndTime(e) < Q.Delay * 1.1);
-                    if (creep != null)
+                    _lastEEndTime = Game.Time + E.ArrivalTime(minion) + 0.1f;
+                    _lastECast = Environment.TickCount;
+                    Casting.TargetSkill(minion, E);
+                }
+            }
+
+            if (useQ || useW)
+            {
+                var minions =
+                    MinionManager.GetMinions(
+                        Player.ServerPosition, Q.Range + Q.Width, MinionTypes.All, MinionTeam.Neutral,
+                        MinionOrderTypes.MaxHealth).Where(e => GetPoisonBuffEndTime(e) < Q.Delay * 1.1).ToList();
+                if (minions.Any())
+                {
+                    if (useQ)
                     {
-                        if (q)
+                        var prediction = Q.GetCircularFarmLocation(minions, Q.Width + 30);
+                        if (prediction.MinionsHit >= 1 && Game.Time > _lastPoisonClearDelay ||
+                            _lastPoisonClearPosition.Distance(prediction.Position) > W.Width * 1.1f)
                         {
-                            Q.Cast(creep);
+                            var mP =
+                                minions.Count(
+                                    p =>
+                                        p.Distance(prediction.Position) < (Q.Width + 30) &&
+                                        GetPoisonBuffEndTime(p) >= 0.5f);
+                            if (prediction.MinionsHit - mP > 1)
+                            {
+                                _lastPoisonClearDelay = Game.Time + Q.Delay + 1;
+                                _lastPoisonClearPosition = prediction.Position;
+                                Q.Cast(prediction.Position);
+                            }
                         }
-                        if (w)
+                    }
+                    if (useW)
+                    {
+                        var prediction = W.GetCircularFarmLocation(minions, W.Width + 50);
+                        if (prediction.MinionsHit >= 2 &&
+                            (Game.Time > _lastPoisonClearDelay ||
+                             _lastPoisonClearPosition.Distance(prediction.Position) > Q.Width * 1.1f))
                         {
-                            W.Cast(creep);
+                            var mP =
+                                minions.Count(
+                                    p =>
+                                        p.Distance(prediction.Position) < (W.Width + 50) &&
+                                        GetPoisonBuffEndTime(p) >= 0.5f);
+                            if (prediction.MinionsHit - mP > 1)
+                            {
+                                _lastPoisonClearDelay = Game.Time + W.Delay + 2;
+                                _lastPoisonClearPosition = prediction.Position;
+                                W.Cast(prediction.Position);
+                            }
                         }
                     }
                 }

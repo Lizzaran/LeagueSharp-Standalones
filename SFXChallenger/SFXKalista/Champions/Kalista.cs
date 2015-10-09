@@ -174,7 +174,8 @@ namespace SFXKalista.Champions
                     Advanced = true,
                     MaxValue = 101,
                     LevelRanges = new SortedList<int, int> { { 1, 6 }, { 6, 12 }, { 12, 18 } },
-                    DefaultValues = new List<int> { 50, 30, 30 }
+                    DefaultValues = new List<int> { 50, 30, 30 },
+                    IgnoreJungleOption = true
                 });
             laneclearMenu.AddItem(new MenuItem(laneclearMenu.Name + ".q", "Use Q").SetValue(true));
             laneclearMenu.AddItem(
@@ -425,13 +426,14 @@ namespace SFXKalista.Champions
                     R.Cast();
                 }
             }
+
             if (Menu.Item(Menu.Name + ".miscellaneous.w-baron").GetValue<KeyBind>().Active && W.IsReady() &&
-                Player.Distance(SummonersRift.River.Baron) <= W.Range)
+                !Player.IsWindingUp && Player.Distance(SummonersRift.River.Baron) <= W.Range)
             {
                 W.Cast(SummonersRift.River.Baron);
             }
             if (Menu.Item(Menu.Name + ".miscellaneous.w-dragon").GetValue<KeyBind>().Active && W.IsReady() &&
-                Player.Distance(SummonersRift.River.Dragon) <= W.Range)
+                !Player.IsWindingUp && Player.Distance(SummonersRift.River.Dragon) <= W.Range)
             {
                 W.Cast(SummonersRift.River.Dragon);
             }
@@ -649,8 +651,7 @@ namespace SFXKalista.Champions
 
             var minE = ItemData.Runaans_Hurricane_Ranged_Only.GetItem().IsOwned(Player) ? 3 : 2;
             var minQ = Menu.Item(Menu.Name + ".lane-clear.q-min").GetValue<Slider>().Value;
-            var minions = MinionManager.GetMinions(
-                Q.Range, MinionTypes.All, MinionTeam.NotAlly, MinionOrderTypes.MaxHealth);
+            var minions = MinionManager.GetMinions(Q.Range);
             if (minions.Count == 0)
             {
                 return;
@@ -684,6 +685,62 @@ namespace SFXKalista.Champions
             {
                 var killable = minions.Where(m => E.IsInRange(m) && Rend.IsKillable(m, false)).ToList();
                 if (killable.Count >= minE)
+                {
+                    E.Cast();
+                }
+            }
+        }
+
+        protected override void JungleClear()
+        {
+            if (!ResourceManager.Check("lane-clear") && !ResourceManager.IgnoreJungle("lane-clear"))
+            {
+                return;
+            }
+
+            var useQ = Menu.Item(Menu.Name + ".lane-clear.q").GetValue<bool>() && Q.IsReady();
+            var useE = Menu.Item(Menu.Name + ".lane-clear.e").GetValue<bool>() && E.IsReady();
+
+            if (!useQ && !useE)
+            {
+                return;
+            }
+
+            var minions = MinionManager.GetMinions(
+                Q.Range, MinionTypes.All, MinionTeam.Neutral, MinionOrderTypes.MaxHealth);
+            if (minions.Count == 0)
+            {
+                return;
+            }
+            if (useQ && minions.Count >= 1 && !Player.IsWindingUp && !Player.IsDashing())
+            {
+                foreach (var minion in minions.Where(x => x.Health <= Q.GetDamage(x)))
+                {
+                    var killcount = 0;
+
+                    foreach (var colminion in
+                        QGetCollisions(Player, Player.ServerPosition.Extend(minion.ServerPosition, Q.Range)))
+                    {
+                        if (colminion.Health <= Q.GetDamage(colminion))
+                        {
+                            killcount++;
+                        }
+                        else
+                        {
+                            break;
+                        }
+                    }
+                    if (killcount >= 1)
+                    {
+                        Q.Cast(minion.ServerPosition);
+                        break;
+                    }
+                }
+            }
+            if (useE)
+            {
+                var killable = minions.Where(m => E.IsInRange(m) && Rend.IsKillable(m, false)).ToList();
+                if (killable.Count >= 1)
                 {
                     E.Cast();
                 }
@@ -802,9 +859,9 @@ namespace SFXKalista.Champions
             {
                 try
                 {
-                    if (Game.Time - time > 5)
+                    if (Game.Time - time > 3)
                     {
-                        time = Game.Time + 5;
+                        time = Game.Time + 3;
                     }
                     float value;
                     if (Damages.TryGetValue(time, out value))

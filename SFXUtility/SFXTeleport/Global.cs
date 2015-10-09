@@ -47,7 +47,7 @@ namespace SFXTeleport
 
         static Global()
         {
-            Logger = new FileLogger(LogDir) { LogLevel = LogLevel.High };
+            Logger = new SimpleFileLogger(LogDir) { LogLevel = LogLevel.High };
 
             try
             {
@@ -61,6 +61,12 @@ namespace SFXTeleport
             {
                 Logger.AddItem(new LogItem(ex));
             }
+        }
+
+        public class Reset
+        {
+            public static bool Enabled = false;
+            public static DateTime MaxAge = new DateTime(1990, 1, 1);
         }
     }
 }
