@@ -449,12 +449,17 @@ namespace SFXLaneMomentum.Library
                             .Where(
                                 o =>
                                     o.Team != GameObjectTeam.Neutral &&
+                                    !o.CharData.BaseSkinName.ToLower().Contains("jarvanivstandard") &&
                                     !o.CharData.BaseSkinName.ToLower().Contains("ward") &&
                                     !o.CharData.BaseSkinName.ToLower().Contains("trinket")));
                     InhibitorsList.UnionWith(ObjectManager.Get<Obj_BarracksDampener>());
                     TurretsList.UnionWith(ObjectManager.Get<Obj_AI_Turret>());
                     JungleList.UnionWith(
-                        ObjectManager.Get<Obj_AI_Minion>().Where(o => o.Team == GameObjectTeam.Neutral));
+                        ObjectManager.Get<Obj_AI_Minion>()
+                            .Where(
+                                o =>
+                                    o.Team == GameObjectTeam.Neutral &&
+                                    !o.CharData.BaseSkinName.ToLower().Contains("barrel")));
                     WardsList.UnionWith(
                         ObjectManager.Get<Obj_AI_Minion>()
                             .Where(
@@ -531,7 +536,7 @@ namespace SFXLaneMomentum.Library
             }
 
             var minion = sender as Obj_AI_Minion;
-            if (minion != null)
+            if (minion != null && !minion.CharData.BaseSkinName.ToLower().Contains("jarvanivstandard"))
             {
                 if (minion.Team != GameObjectTeam.Neutral)
                 {
@@ -563,7 +568,7 @@ namespace SFXLaneMomentum.Library
                         }
                     }
                 }
-                else
+                else if (!minion.CharData.BaseSkinName.ToLower().Contains("barrel"))
                 {
                     JungleList.Add(minion);
                 }
@@ -667,7 +672,7 @@ namespace SFXLaneMomentum.Library
             }
 
             var minion = sender as Obj_AI_Minion;
-            if (minion != null)
+            if (minion != null && !minion.CharData.BaseSkinName.ToLower().Contains("jarvanivstandard"))
             {
                 if (minion.Team != GameObjectTeam.Neutral)
                 {
@@ -706,7 +711,7 @@ namespace SFXLaneMomentum.Library
                         AllyList.Remove(minion);
                     }
                 }
-                else
+                else if (!minion.CharData.BaseSkinName.ToLower().Contains("barrel"))
                 {
                     JungleList.Remove(minion);
                 }

@@ -235,7 +235,7 @@ namespace SFXVarus.SFXTargetSelector
                 range = Mode == TargetSelectorModeType.Weights && ForceFocus ? Weights.Range : range;
 
                 var targets =
-                    Humanizer.FilterTargets(Targets.Items, from, range)
+                    Humanizer.FilterTargets(Targets.Items)
                         .Where(
                             h => ignoredChampions == null || ignoredChampions.All(i => i.NetworkId != h.Hero.NetworkId))
                         .Where(h => IsValidTarget(h.Hero, range, damageType, ignoreShields, from))
@@ -265,9 +265,10 @@ namespace SFXVarus.SFXTargetSelector
         {
             try
             {
+                LeagueSharp.Common.TargetSelector.CustomTS = true;
                 _menu = menu;
 
-                var drawingMenu = _menu.AddSubMenu(new Menu("Drawings", menu.Name + ".drawing"));
+                var drawingMenu = _menu.AddSubMenu(new Menu("Drawings", _menu.Name + ".drawing"));
 
                 drawingMenu.AddItem(
                     new MenuItem(drawingMenu.Name + ".circle-thickness", "Circle Thickness").SetShared()
@@ -284,7 +285,7 @@ namespace SFXVarus.SFXTargetSelector
                 Humanizer.AddToMenu(_menu);
 
                 _menu.AddItem(
-                    new MenuItem(menu.Name + ".mode", "Mode").SetShared()
+                    new MenuItem(_menu.Name + ".mode", "Mode").SetShared()
                         .SetValue(
                             new StringList(
                                 new[]
@@ -297,7 +298,7 @@ namespace SFXVarus.SFXTargetSelector
                         Mode = GetModeBySelectedIndex(args.GetNewValue<StringList>().SelectedIndex);
                     };
 
-                Mode = GetModeBySelectedIndex(_menu.Item(menu.Name + ".mode").GetValue<StringList>().SelectedIndex);
+                Mode = GetModeBySelectedIndex(_menu.Item(_menu.Name + ".mode").GetValue<StringList>().SelectedIndex);
             }
             catch (Exception ex)
             {

@@ -199,7 +199,6 @@ namespace SFXVarus.Champions
                 {
                     Prefix = "Q",
                     Advanced = true,
-                    MaxValue = 101,
                     LevelRanges = new SortedList<int, int> { { 1, 6 }, { 6, 12 }, { 12, 18 } },
                     DefaultValues = new List<int> { 50, 30, 30 }
                 });
@@ -210,7 +209,6 @@ namespace SFXVarus.Champions
                 {
                     Prefix = "E",
                     Advanced = true,
-                    MaxValue = 101,
                     LevelRanges = new SortedList<int, int> { { 1, 6 }, { 6, 12 }, { 12, 18 } },
                     DefaultValues = new List<int> { 50, 30, 30 }
                 });
@@ -280,7 +278,7 @@ namespace SFXVarus.Champions
         {
             try
             {
-                if (args.UniqueId == "e-gapcloser" && E.IsReady() &&
+                if (args.UniqueId.Equals("e-gapcloser") && E.IsReady() &&
                     BestTargetOnlyManager.Check("e-gapcloser", E, args.Hero))
                 {
                     if (args.End.Distance(Player.Position) <= E.Range)

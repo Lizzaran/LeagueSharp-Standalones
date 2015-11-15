@@ -32,6 +32,7 @@ using SFXTwistedFate.Enumerations;
 using SFXTwistedFate.Library;
 using SFXTwistedFate.Library.Logger;
 using Spell = SFXTwistedFate.Wrappers.Spell;
+using Utils = SFXTwistedFate.Helpers.Utils;
 
 #endregion
 
@@ -103,7 +104,7 @@ namespace SFXTwistedFate.Managers
                             new StringList(modes.Select(m => m.ToString()).ToArray()))).ValueChanged +=
                         delegate(object sender, OnValueChangeEventArgs eventArgs)
                         {
-                            UpdateVisibileTags(requiredMenu, eventArgs.GetNewValue<StringList>().SelectedIndex + 1);
+                            Utils.UpdateVisibleTags(requiredMenu, eventArgs.GetNewValue<StringList>().SelectedIndex + 1);
                         };
 
                     for (var i = 0; i < modes.Count; i++)
@@ -127,7 +128,7 @@ namespace SFXTwistedFate.Managers
                             });
                     }
 
-                    UpdateVisibileTags(
+                    Utils.UpdateVisibleTags(
                         requiredMenu, _menu.Item(requiredMenu.Name + ".mode").GetValue<StringList>().SelectedIndex + 1);
                 }
 
@@ -304,22 +305,6 @@ namespace SFXTwistedFate.Managers
                 Global.Logger.AddItem(new LogItem(ex));
             }
             return null;
-        }
-
-        private void UpdateVisibileTags(Menu menu, int tag)
-        {
-            foreach (var menuItem in menu.Items)
-            {
-                if (menuItem.Tag != 0)
-                {
-                    menuItem.Show(false);
-                }
-
-                if (menuItem.Tag == tag)
-                {
-                    menuItem.Show();
-                }
-            }
         }
 
         public bool IsActive(UltimateModeType mode, Obj_AI_Hero hero = null)

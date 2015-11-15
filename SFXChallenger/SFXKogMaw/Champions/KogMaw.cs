@@ -66,6 +66,7 @@ namespace SFXKogMaw.Champions
         protected override void OnLoad()
         {
             GapcloserManager.OnGapcloser += OnEnemyGapcloser;
+            BuffManager.OnBuff += OnBuffManagerBuff;
         }
 
         protected override void SetupSpells()
@@ -139,7 +140,6 @@ namespace SFXKogMaw.Champions
                     "lane-clear", ResourceType.Mana, ResourceValueType.Percent, ResourceCheckType.Minimum)
                 {
                     Advanced = true,
-                    MaxValue = 101,
                     LevelRanges = new SortedList<int, int> { { 1, 6 }, { 6, 12 }, { 12, 18 } },
                     DefaultValues = new List<int> { 50, 30, 30 },
                     IgnoreJungleOption = true
@@ -171,16 +171,16 @@ namespace SFXKogMaw.Champions
             BestTargetOnlyManager.AddToMenu(eGapcloserMenu, "e-gapcloser");
 
             var rImmobileMenu = miscMenu.AddSubMenu(new Menu("R Immobile", miscMenu.Name + "r-immobile"));
-            HeroListManager.AddToMenu(
-                rImmobileMenu,
+            BuffManager.AddToMenu(
+                rImmobileMenu, BuffManager.ImmobileBuffs,
                 new HeroListManagerArgs("r-immobile")
                 {
                     IsWhitelist = false,
                     Allies = false,
                     Enemies = true,
                     DefaultValue = false
-                });
-            BestTargetOnlyManager.AddToMenu(rImmobileMenu, "r-immobile", true);
+                }, true);
+            BestTargetOnlyManager.AddToMenu(rImmobileMenu, "r-immobile");
 
             var rGapcloserMenu = miscMenu.AddSubMenu(new Menu("R Gapcloser", miscMenu.Name + "r-gapcloser"));
             GapcloserManager.AddToMenu(
@@ -202,6 +202,25 @@ namespace SFXKogMaw.Champions
             IndicatorManager.Add(E);
             IndicatorManager.Add(R);
             IndicatorManager.Finale();
+        }
+
+        private void OnBuffManagerBuff(object sender, BuffManagerArgs args)
+        {
+            try
+            {
+                if (R.IsReady())
+                {
+                    if (args.UniqueId.Equals("r-immobile") && BestTargetOnlyManager.Check("r-immobile", R, args.Hero) &&
+                        R.IsInRange(args.Position))
+                    {
+                        R.Cast(args.Position);
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Global.Logger.AddItem(new LogItem(ex));
+            }
         }
 
         protected override void OnPreUpdate() {}
@@ -239,7 +258,7 @@ namespace SFXKogMaw.Champions
         {
             try
             {
-                if (args.UniqueId == "e-gapcloser" && E.IsReady() &&
+                if (args.UniqueId.Equals("e-gapcloser") && E.IsReady() &&
                     BestTargetOnlyManager.Check("e-gapcloser", E, args.Hero))
                 {
                     if (args.End.Distance(Player.Position) <= E.Range)
@@ -247,7 +266,7 @@ namespace SFXKogMaw.Champions
                         E.Cast(args.End);
                     }
                 }
-                if (args.UniqueId == "r-gapcloser" && R.IsReady() &&
+                if (args.UniqueId.Equals("r-gapcloser") && R.IsReady() &&
                     BestTargetOnlyManager.Check("r-gapcloser", R, args.Hero) &&
                     Menu.Item(Menu.Name + ".miscellaneous.r-max").GetValue<Slider>().Value > GetRBuffCount())
                 {
@@ -261,6 +280,20 @@ namespace SFXKogMaw.Champions
             {
                 Global.Logger.AddItem(new LogItem(ex));
             }
+        }
+
+        private bool ShouldUseR()
+        {
+            var attackSpeed =
+                (~(int) ((1 / ObjectManager.Player.AttackSpeedMod * 100) - (1 / ObjectManager.Player.AttackDelay * 100)) +
+                 1);
+
+            if (attackSpeed > 70 && Player.HasBuff("KogMawBioArcaneBarrage"))
+            {
+                return false;
+            }
+
+            return true;
         }
 
         private int GetRBuffCount()
@@ -301,8 +334,8 @@ namespace SFXKogMaw.Champions
             {
                 var target = TargetSelector.GetTarget(R);
                 if (target != null &&
-                    (Player.FlatMagicDamageMod > 50 ||
-                     !GameObjects.Enemy.Any(e => e.IsValidTarget() && Orbwalking.InAutoAttackRange(e))))
+                    Menu.Item(Menu.Name + ".miscellaneous.r-max").GetValue<Slider>().Value > GetRBuffCount() &&
+                    (Player.FlatMagicDamageMod > 50 || ShouldUseR()))
                 {
                     Casting.SkillShot(R, R.GetHitChance("combo"));
                 }
@@ -346,9 +379,7 @@ namespace SFXKogMaw.Champions
                 if (useR && Menu.Item(Menu.Name + ".miscellaneous.r-max").GetValue<Slider>().Value > GetRBuffCount())
                 {
                     var target = TargetSelector.GetTarget(R);
-                    if (target != null &&
-                        (Player.FlatMagicDamageMod > 50 ||
-                         !GameObjects.Enemy.Any(e => e.IsValidTarget() && Orbwalking.InAutoAttackRange(e))))
+                    if (target != null && (Player.FlatMagicDamageMod > 50 || ShouldUseR()))
                     {
                         Casting.SkillShot(R, R.GetHitChance("harass"));
                     }

@@ -27,6 +27,7 @@ using System.Collections.Generic;
 using System.Linq;
 using LeagueSharp;
 using LeagueSharp.Common;
+using SFXHealth.Library.Extensions.NET;
 using SFXHealth.Library.Logger;
 using SharpDX;
 
@@ -172,6 +173,23 @@ namespace SFXHealth.Data
             {
                 Global.Logger.AddItem(new LogItem(ex));
             }
+        }
+
+        public static string FixName(string name)
+        {
+            try
+            {
+                return name.Contains("Smite", StringComparison.OrdinalIgnoreCase)
+                    ? "summonersmite"
+                    : (name.Contains("Teleport", StringComparison.OrdinalIgnoreCase)
+                        ? "summonerteleport"
+                        : name.ToLower());
+            }
+            catch (Exception ex)
+            {
+                Global.Logger.AddItem(new LogItem(ex));
+            }
+            return name;
         }
     }
 }

@@ -40,6 +40,7 @@ namespace SFXTwistedFate.Managers
     internal static class GapcloserManager
     {
         private static readonly Dictionary<string, Menu> Menues = new Dictionary<string, Menu>();
+        private static readonly Random Random = new Random();
 
         private static readonly List<GapcloserSpell> GapcloserSpells = new List<GapcloserSpell>
         {
@@ -165,6 +166,9 @@ namespace SFXTwistedFate.Managers
                     new MenuItem(menu.Name + ".gap-" + args.UniqueId + ".delay", "Delay").SetValue(
                         new Slider(100, 0, 500)));
                 menu.AddItem(
+                    new MenuItem(menu.Name + ".gap-" + args.UniqueId + ".randomize", "Randomize Position").SetValue(
+                        new Slider(10)));
+                menu.AddItem(
                     new MenuItem(menu.Name + ".gap-" + args.UniqueId + ".distance", "Min. Distance").SetValue(
                         new Slider(150, 0, 500)));
                 menu.AddItem(
@@ -202,6 +206,10 @@ namespace SFXTwistedFate.Managers
                     var startPosition = args.Start;
                     var endPosition = args.End;
                     var cSpell = enemy.GetSpell(gSpell.Slot);
+                    if (gSpell.IsTargeted && args.Target != null)
+                    {
+                        endPosition = args.Target.Position;
+                    }
                     if (gSpell.IsUnitDash)
                     {
                         endPosition = startPosition.Extend(endPosition, gSpell.DashDistance);
@@ -302,7 +310,7 @@ namespace SFXTwistedFate.Managers
                 {
                     var uniqueId = entry.Key;
                     var menu = entry.Value;
-                    if (HeroListManager.Check(entry.Key, sender))
+                    if (HeroListManager.Check(uniqueId, sender))
                     {
                         var distance = menu.Item(menu.Name + ".gap-" + uniqueId + ".distance").GetValue<Slider>().Value;
                         var dangerous = menu.Item(menu.Name + ".gap-" + uniqueId + ".dangerous").GetValue<bool>();
@@ -310,15 +318,31 @@ namespace SFXTwistedFate.Managers
                             (!dangerous || IsDangerous(sender, startPosition, endPosition, targeted)))
                         {
                             var delay = menu.Item(menu.Name + ".gap-" + uniqueId + ".delay").GetValue<Slider>().Value;
+                            var randomize =
+                                menu.Item(menu.Name + ".gap-" + uniqueId + ".randomize").GetValue<Slider>().Value;
+                            if (delay > 1)
+                            {
+                                delay = Random.Next((int) (delay * 0.9f), (int) (delay * 1.1f));
+                            }
+                            if (randomize > 0)
+                            {
+                                if (!startPosition.Equals(Vector3.Zero))
+                                {
+                                    startPosition.X += Random.Next(0, randomize * 2 + 1) - randomize;
+                                    startPosition.Y += Random.Next(0, randomize * 2 + 1) - randomize;
+                                }
+                                if (!endPosition.Equals(Vector3.Zero))
+                                {
+                                    endPosition.X += Random.Next(0, randomize * 2 + 1) - randomize;
+                                    endPosition.Y += Random.Next(0, randomize * 2 + 1) - randomize;
+                                }
+                            }
                             Utility.DelayAction.Add(
                                 Math.Max(1, dash ? delay - 100 : delay),
-                                delegate
-                                {
+                                () =>
                                     OnGapcloser.RaiseEvent(
                                         null,
-                                        new GapcloserManagerArgs(
-                                            uniqueId, sender, startPosition, endPosition, endTime - (delay / 1000f)));
-                                });
+                                        new GapcloserManagerArgs(uniqueId, sender, startPosition, endPosition, endTime)));
                         }
                     }
                 }

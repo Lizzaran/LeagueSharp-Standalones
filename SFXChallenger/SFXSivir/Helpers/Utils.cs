@@ -150,7 +150,14 @@ namespace SFXSivir.Helpers
 
         public static bool UnderAllyTurret(Vector3 position)
         {
-            return GameObjects.AllyTurrets.Any(t => t.Distance(position) < 925f && !t.IsDead && t.Health > 1);
+            return
+                GameObjects.AllyTurrets.Any(t => t.IsValid && !t.IsDead && t.Health > 1 && t.Distance(position) < 925f);
+        }
+
+        public static bool UnderEnemyTurret(Vector3 position)
+        {
+            return
+                GameObjects.EnemyTurrets.Any(t => t.IsValid && !t.IsDead && t.Health > 1 && t.Distance(position) < 925f);
         }
 
         public static bool IsImmobile(Obj_AI_Base t)
@@ -238,6 +245,33 @@ namespace SFXSivir.Helpers
             }
 
             return Vector3.Zero;
+        }
+
+        public static void UpdateVisibleTags(Menu menu, int tag)
+        {
+            foreach (var menuItem in menu.Items)
+            {
+                if (menuItem.Tag != 0)
+                {
+                    menuItem.Show(false);
+                }
+
+                if (menuItem.Tag == tag)
+                {
+                    menuItem.Show();
+                }
+            }
+        }
+
+        public static void UpdateVisibleTag(Menu menu, int tag, bool value)
+        {
+            foreach (var menuItem in menu.Items)
+            {
+                if (menuItem.Tag == tag)
+                {
+                    menuItem.Show(value);
+                }
+            }
         }
     }
 }

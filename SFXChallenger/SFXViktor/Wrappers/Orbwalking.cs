@@ -91,7 +91,8 @@ namespace SFXViktor.Wrappers
             "elisespiderlingbasicattack", "heimertyellowbasicattack", "heimertyellowbasicattack2",
             "heimertbluebasicattack", "annietibbersbasicattack", "annietibbersbasicattack2",
             "yorickdecayedghoulbasicattack", "yorickravenousghoulbasicattack", "yorickspectralghoulbasicattack",
-            "malzaharvoidlingbasicattack", "malzaharvoidlingbasicattack2", "malzaharvoidlingbasicattack3"
+            "malzaharvoidlingbasicattack", "malzaharvoidlingbasicattack2", "malzaharvoidlingbasicattack3",
+            "kindredwolfbasicattack", "kindredbasicattackoverridelightbombfinal"
         };
 
         //Spells that are attacks even if they dont have the "attack" word in their name.
@@ -368,7 +369,8 @@ namespace SFXViktor.Wrappers
                 {
                     var min = (delay.Default / 100f) * delay.MinDelay;
                     var max = (delay.Default / 100f) * delay.MaxDelay;
-                    delay.CurrentDelay = Random.Next((int) Math.Min(min, max), (int) Math.Max(min, max) + 1);
+                    delay.CurrentDelay = Random.Next(
+                        (int) Math.Floor(Math.Min(min, max)), (int) Math.Ceiling(Math.Max(min, max)) + 1);
                 }
                 else
                 {
@@ -377,7 +379,11 @@ namespace SFXViktor.Wrappers
             }
             else
             {
-                delay.CurrentDelay = delay.Default;
+                delay.CurrentDelay = delay.Default > 0
+                    ? Random.Next(
+                        (int) Math.Floor(delay.Default * (delay.Default >= 50 ? 0.95f : 0.9f)),
+                        (int) Math.Ceiling(delay.Default * (delay.Default >= 50 ? 1.05f : 1.1f)) + 1)
+                    : delay.Default;
             }
         }
 
@@ -442,14 +448,14 @@ namespace SFXViktor.Wrappers
                 }
             }
 
-            if (angle >= 60 && Utils.GameTimeTickCount - LastMoveCommandT < 60)
+            if (angle >= 80 && Utils.GameTimeTickCount - LastMoveCommandT < 60)
             {
                 return;
             }
 
             var delay = Delays[OrbwalkingDelay.Move];
 
-            if (Utils.GameTimeTickCount - LastMoveCommandT < delay.CurrentDelay && !overrideTimer && angle < 60)
+            if (Utils.GameTimeTickCount - LastMoveCommandT < delay.CurrentDelay && !overrideTimer && angle <= 80)
             {
                 return;
             }
@@ -1054,7 +1060,11 @@ namespace SFXViktor.Wrappers
 
                 if (result == null && ActiveMode == OrbwalkingMode.Combo)
                 {
-                    if (!GameObjects.EnemyHeroes.Any(e => e.IsValidTarget(GetRealAutoAttackRange(e) * 1.25f)))
+                    if (
+                        !GameObjects.EnemyHeroes.Any(
+                            e =>
+                                e.IsValid && !e.IsDead && e.IsVisible &&
+                                e.Distance(Player) <= GetRealAutoAttackRange(e) * 2f))
                     {
                         return minions.FirstOrDefault();
                     }

@@ -24,6 +24,7 @@
 
 using System;
 using System.Linq;
+using System.Threading.Tasks;
 using LeagueSharp;
 using LeagueSharp.Common;
 using SFXGame.Classes;
@@ -146,7 +147,12 @@ namespace SFXGame.Features.Events
                 }
                 if (Menu.Item(Name + "OnEndQuit").GetValue<bool>())
                 {
-                    LeagueSharp.Game.Quit();
+                    Task.Run(
+                        async () =>
+                        {
+                            await Task.Delay(10000);
+                            LeagueSharp.Game.Quit();
+                        });
                 }
             }
             catch (Exception ex)

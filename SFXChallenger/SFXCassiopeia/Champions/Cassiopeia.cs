@@ -78,6 +78,7 @@ namespace SFXCassiopeia.Champions
             Orbwalking.BeforeAttack += OnOrbwalkingBeforeAttack;
             Interrupter2.OnInterruptableTarget += OnInterruptableTarget;
             GapcloserManager.OnGapcloser += OnEnemyGapcloser;
+            BuffManager.OnBuff += OnBuffManagerBuff;
         }
 
         protected override void SetupSpells()
@@ -130,15 +131,16 @@ namespace SFXCassiopeia.Champions
                     R.Range = args.GetNewValue<Slider>().Value;
                     DrawingManager.Update("R Flash", args.GetNewValue<Slider>().Value + SummonerManager.Flash.Range);
                 };
+            ultimateMenu.AddItem(new MenuItem(ultimateMenu.Name + ".backwards", "Backwards Flash").SetValue(true));
 
             var comboMenu = Menu.AddSubMenu(new Menu("Combo", Menu.Name + ".combo"));
             HitchanceManager.AddToMenu(
                 comboMenu.AddSubMenu(new Menu("Hitchance", comboMenu.Name + ".hitchance")), "combo",
                 new Dictionary<string, HitChance>
                 {
-                    { "Q", HitChance.VeryHigh },
+                    { "Q", HitChance.High },
                     { "W", HitChance.High },
-                    { "R", HitChance.VeryHigh }
+                    { "R", HitChance.High }
                 });
             comboMenu.AddItem(new MenuItem(comboMenu.Name + ".aa", "Use AutoAttacks").SetValue(false));
             comboMenu.AddItem(new MenuItem(comboMenu.Name + ".q", "Use Q").SetValue(true));
@@ -168,7 +170,6 @@ namespace SFXCassiopeia.Champions
                     "lane-clear", ResourceType.Mana, ResourceValueType.Percent, ResourceCheckType.Minimum)
                 {
                     Advanced = true,
-                    MaxValue = 101,
                     LevelRanges = new SortedList<int, int> { { 1, 6 }, { 6, 12 }, { 12, 18 } },
                     DefaultValues = new List<int> { 50, 30, 30 },
                     IgnoreJungleOption = true
@@ -185,7 +186,6 @@ namespace SFXCassiopeia.Champions
                     "lasthit", ResourceType.Mana, ResourceValueType.Percent, ResourceCheckType.Maximum)
                 {
                     Advanced = true,
-                    MaxValue = 101,
                     LevelRanges = new SortedList<int, int> { { 1, 6 }, { 6, 12 }, { 12, 18 } },
                     DefaultValues = new List<int> { 90, 70, 70 }
                 });
@@ -239,16 +239,16 @@ namespace SFXCassiopeia.Champions
             BestTargetOnlyManager.AddToMenu(wGapcloserMenu, "w-gapcloser");
 
             var wImmobileMenu = miscMenu.AddSubMenu(new Menu("W Immobile", miscMenu.Name + "w-immobile"));
-            HeroListManager.AddToMenu(
-                wImmobileMenu,
+            BuffManager.AddToMenu(
+                wImmobileMenu, BuffManager.ImmobileBuffs,
                 new HeroListManagerArgs("w-immobile")
                 {
                     IsWhitelist = false,
                     Allies = false,
                     Enemies = true,
                     DefaultValue = false
-                });
-            BestTargetOnlyManager.AddToMenu(wImmobileMenu, "w-immobile", true);
+                }, true);
+            BestTargetOnlyManager.AddToMenu(wImmobileMenu, "w-immobile");
 
             var wFleeingMenu = miscMenu.AddSubMenu(new Menu("W Fleeing", miscMenu.Name + "w-fleeing"));
             HeroListManager.AddToMenu(
@@ -276,6 +276,25 @@ namespace SFXCassiopeia.Champions
 
             Weights.AddItem(
                 new Weights.Item("poison-time", "Poison Time", 5, false, hero => GetPoisonBuffEndTime(hero) + 1));
+        }
+
+        private void OnBuffManagerBuff(object sender, BuffManagerArgs args)
+        {
+            try
+            {
+                if (W.IsReady())
+                {
+                    if (args.UniqueId.Equals("w-immobile") && BestTargetOnlyManager.Check("w-immobile", W, args.Hero) &&
+                        W.IsInRange(args.Position))
+                    {
+                        W.Cast(args.Position);
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Global.Logger.AddItem(new LogItem(ex));
+            }
         }
 
         protected override void OnPreUpdate()
@@ -318,18 +337,19 @@ namespace SFXCassiopeia.Champions
                             (t.IsFacing(Player)
                                 ? (t.Distance(Player))
                                 : (R.GetPrediction(t).UnitPosition.Distance(Player.Position))) > R.Range);
+                var backwards = Menu.Item(Menu.Name + ".ultimate.backwards").GetValue<bool>();
                 foreach (var target in targets)
                 {
                     var flashPos = Player.Position.Extend(target.Position, SummonerManager.Flash.Range);
                     var maxHits = GetMaxRHits(HitChance.High, flashPos);
                     if (maxHits.Item1.Count > 0)
                     {
+                        var castPos = backwards
+                            ? Player.Position.Extend(maxHits.Item2, -(Player.Position.Distance(maxHits.Item2) * 2))
+                            : Player.Position.Extend(maxHits.Item2, Player.Position.Distance(maxHits.Item2));
                         if (_ultimate.Check(UltimateModeType.Flash, maxHits.Item1))
                         {
-                            if (
-                                R.Cast(
-                                    Player.Position.Extend(
-                                        maxHits.Item2, -(Player.Position.Distance(maxHits.Item2) * 2)), true))
+                            if (R.Cast(castPos))
                             {
                                 Utility.DelayAction.Add(
                                     300 + (Game.Ping / 2), () => SummonerManager.Flash.Cast(flashPos));
@@ -339,11 +359,7 @@ namespace SFXCassiopeia.Champions
                         {
                             if (
                                 maxHits.Item1.Where(hit => _ultimate.CheckSingle(UltimateModeType.Flash, hit))
-                                    .Any(
-                                        hit =>
-                                            R.Cast(
-                                                Player.Position.Extend(
-                                                    maxHits.Item2, -(Player.Position.Distance(maxHits.Item2) * 2)), true)))
+                                    .Any(hit => R.Cast(castPos)))
                             {
                                 Utility.DelayAction.Add(
                                     300 + (Game.Ping / 2), () => SummonerManager.Flash.Cast(flashPos));
@@ -413,6 +429,10 @@ namespace SFXCassiopeia.Champions
         {
             try
             {
+                if (!args.Unit.IsMe)
+                {
+                    return;
+                }
                 var t = args.Target as Obj_AI_Hero;
                 if (t != null &&
                     (Orbwalker.ActiveMode == Orbwalking.OrbwalkingMode.Combo ||
@@ -449,14 +469,14 @@ namespace SFXCassiopeia.Champions
                 if ((Orbwalker.ActiveMode == Orbwalking.OrbwalkingMode.LastHit))
                 {
                     var m = args.Target as Obj_AI_Minion;
-                    if (m != null && E.CanCast(m))
+                    if (m != null && E.IsReady() && E.CanCast(m) && E.Instance.ManaCost < Player.Mana)
                     {
-                        if (E.Instance.ManaCost < Player.Mana)
+                        var useE = Menu.Item(Menu.Name + ".lasthit.e").GetValue<bool>();
+                        var useEPoison = Menu.Item(Menu.Name + ".lasthit.e-poison").GetValue<bool>();
+                        if ((useE || useEPoison && GetPoisonBuffEndTime(m) > E.ArrivalTime(m)) &&
+                            ResourceManager.Check("lasthit"))
                         {
-                            args.Process = Menu.Item(Menu.Name + ".lasthit.e").GetValue<bool>() ||
-                                           (Menu.Item(Menu.Name + ".lasthit.e-poison").GetValue<bool>() &&
-                                            GetPoisonBuffEndTime(m) > E.ArrivalTime(m)) &&
-                                           ResourceManager.Check("lasthit");
+                            args.Process = false;
                         }
                     }
                 }
@@ -487,7 +507,7 @@ namespace SFXCassiopeia.Champions
         {
             try
             {
-                if (args.UniqueId == "q-gapcloser" && Q.IsReady() &&
+                if (args.UniqueId.Equals("q-gapcloser") && Q.IsReady() &&
                     BestTargetOnlyManager.Check("q-gapcloser", Q, args.Hero))
                 {
                     if (args.End.Distance(Player.Position) <= Q.Range)
@@ -503,7 +523,7 @@ namespace SFXCassiopeia.Champions
                         }
                     }
                 }
-                if (args.UniqueId == "w-gapcloser" && W.IsReady() &&
+                if (args.UniqueId.Equals("w-gapcloser") && W.IsReady() &&
                     BestTargetOnlyManager.Check("w-gapcloser", W, args.Hero))
                 {
                     if (args.End.Distance(Player.Position) <= W.Range)

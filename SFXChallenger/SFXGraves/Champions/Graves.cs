@@ -147,7 +147,6 @@ namespace SFXGraves.Champions
                     "lane-clear", ResourceType.Mana, ResourceValueType.Percent, ResourceCheckType.Minimum)
                 {
                     Advanced = true,
-                    MaxValue = 101,
                     LevelRanges = new SortedList<int, int> { { 1, 6 }, { 6, 12 }, { 12, 18 } },
                     DefaultValues = new List<int> { 50, 30, 30 },
                     IgnoreJungleOption = true
@@ -225,7 +224,7 @@ namespace SFXGraves.Champions
         {
             try
             {
-                if (args.UniqueId == "w-gapcloser" && W.IsReady() &&
+                if (args.UniqueId.Equals("w-gapcloser") && W.IsReady() &&
                     BestTargetOnlyManager.Check("w-gapcloser", W, args.Hero))
                 {
                     if (args.End.Distance(Player.Position) <= W.Range)
@@ -233,7 +232,7 @@ namespace SFXGraves.Champions
                         W.Cast(args.End);
                     }
                 }
-                if (args.UniqueId == "e-gapcloser" && E.IsReady() &&
+                if (args.UniqueId.Equals("e-gapcloser") && E.IsReady() &&
                     BestTargetOnlyManager.Check("e-gapcloser", E, args.Hero))
                 {
                     E.Cast(args.End.Extend(Player.Position, args.End.Distance(Player.Position) + E.Range));

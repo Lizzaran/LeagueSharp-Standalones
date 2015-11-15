@@ -37,6 +37,7 @@ namespace SFXAutoLeveler.Features.Events
     internal class AutoLeveler : Child<App>
     {
         private const float CheckInterval = 300f;
+        private readonly Random random = new Random();
         private bool _delayed;
         private SpellDataInst _e;
         private float _lastCheck = Environment.TickCount;
@@ -249,6 +250,7 @@ namespace SFXAutoLeveler.Features.Events
         {
             if (!_delayed)
             {
+                delay = random.Next((int) (delay * 0.7f), (int) (delay * 1.3f));
                 _delayed = true;
                 Utility.DelayAction.Add(
                     delay + 1, delegate

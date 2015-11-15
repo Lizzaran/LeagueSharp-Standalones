@@ -32,6 +32,7 @@ using SFXVarus.Enumerations;
 using SFXVarus.Library;
 using SFXVarus.Library.Logger;
 using Spell = SFXVarus.Wrappers.Spell;
+using Utils = SFXVarus.Helpers.Utils;
 
 #endregion
 
@@ -103,7 +104,7 @@ namespace SFXVarus.Managers
                             new StringList(modes.Select(m => m.ToString()).ToArray()))).ValueChanged +=
                         delegate(object sender, OnValueChangeEventArgs eventArgs)
                         {
-                            UpdateVisibileTags(requiredMenu, eventArgs.GetNewValue<StringList>().SelectedIndex + 1);
+                            Utils.UpdateVisibleTags(requiredMenu, eventArgs.GetNewValue<StringList>().SelectedIndex + 1);
                         };
 
                     for (var i = 0; i < modes.Count; i++)
@@ -127,7 +128,7 @@ namespace SFXVarus.Managers
                             });
                     }
 
-                    UpdateVisibileTags(
+                    Utils.UpdateVisibleTags(
                         requiredMenu, _menu.Item(requiredMenu.Name + ".mode").GetValue<StringList>().SelectedIndex + 1);
                 }
 
@@ -304,22 +305,6 @@ namespace SFXVarus.Managers
                 Global.Logger.AddItem(new LogItem(ex));
             }
             return null;
-        }
-
-        private void UpdateVisibileTags(Menu menu, int tag)
-        {
-            foreach (var menuItem in menu.Items)
-            {
-                if (menuItem.Tag != 0)
-                {
-                    menuItem.Show(false);
-                }
-
-                if (menuItem.Tag == tag)
-                {
-                    menuItem.Show();
-                }
-            }
         }
 
         public bool IsActive(UltimateModeType mode, Obj_AI_Hero hero = null)

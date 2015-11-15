@@ -78,6 +78,7 @@ namespace SFXTwistedFate.Champions
             Drawing.OnEndScene += OnDrawingEndScene;
             Obj_AI_Base.OnProcessSpellCast += OnObjAiBaseProcessSpellCast;
             Orbwalking.BeforeAttack += OnOrbwalkingBeforeAttack;
+            BuffManager.OnBuff += OnBuffManagerBuff;
         }
 
         protected override void SetupSpells()
@@ -138,7 +139,6 @@ namespace SFXTwistedFate.Champions
                     "lane-clear", ResourceType.Mana, ResourceValueType.Percent, ResourceCheckType.Minimum)
                 {
                     Advanced = true,
-                    MaxValue = 101,
                     LevelRanges = new SortedList<int, int> { { 1, 6 }, { 6, 12 }, { 12, 18 } },
                     DefaultValues = new List<int> { 50, 50, 50 },
                     IgnoreJungleOption = true
@@ -150,7 +150,6 @@ namespace SFXTwistedFate.Champions
                 {
                     Prefix = "Blue",
                     Advanced = true,
-                    MaxValue = 101,
                     LevelRanges = new SortedList<int, int> { { 1, 6 }, { 6, 12 }, { 12, 18 } },
                     DefaultValues = new List<int> { 60, 60, 60 },
                     IgnoreJungleOption = true
@@ -163,12 +162,29 @@ namespace SFXTwistedFate.Champions
             fleeMenu.AddItem(new MenuItem(fleeMenu.Name + ".w", "Use Gold Card").SetValue(true));
 
             var miscMenu = Menu.AddSubMenu(new Menu("Misc", Menu.Name + ".miscellaneous"));
+
+            var qImmobileMenu = miscMenu.AddSubMenu(new Menu("Q Immobile", miscMenu.Name + "q-immobile"));
+            BuffManager.AddToMenu(
+                qImmobileMenu, BuffManager.ImmobileBuffs,
+                new HeroListManagerArgs("q-immobile")
+                {
+                    IsWhitelist = false,
+                    Allies = false,
+                    Enemies = true,
+                    DefaultValue = false
+                }, false);
+            BestTargetOnlyManager.AddToMenu(qImmobileMenu, "q-immobile");
+
+            miscMenu.AddItem(
+                new MenuItem(miscMenu.Name + ".q-range", "Q Range").SetValue(
+                    new Slider((int) Q.Range, 500, (int) Q.Range))).ValueChanged +=
+                delegate(object sender, OnValueChangeEventArgs args) { Q.Range = args.GetNewValue<Slider>().Value; };
             miscMenu.AddItem(
                 new MenuItem(miscMenu.Name + ".w-range", "Card Pick Distance").SetValue(
                     new Slider((int) W.Range, 500, 800))).ValueChanged +=
                 delegate(object sender, OnValueChangeEventArgs args) { W.Range = args.GetNewValue<Slider>().Value; };
             miscMenu.AddItem(
-                new MenuItem(miscMenu.Name + ".w-delay", "Card Pick Delay").SetValue(new Slider(200, 0, 400)))
+                new MenuItem(miscMenu.Name + ".w-delay", "Card Pick Delay").SetValue(new Slider(150, 0, 400)))
                 .ValueChanged +=
                 delegate(object sender, OnValueChangeEventArgs args) { Cards.Delay = args.GetNewValue<Slider>().Value; };
             miscMenu.AddItem(
@@ -183,6 +199,7 @@ namespace SFXTwistedFate.Champions
             manualMenu.AddItem(
                 new MenuItem(manualMenu.Name + ".gold", "Hotkey Gold").SetValue(new KeyBind('U', KeyBindType.Press)));
 
+            Q.Range = Menu.Item(Menu.Name + ".miscellaneous.q-range").GetValue<Slider>().Value;
             W.Range = Menu.Item(Menu.Name + ".miscellaneous.w-range").GetValue<Slider>().Value;
             Cards.Delay = Menu.Item(Menu.Name + ".miscellaneous.w-delay").GetValue<Slider>().Value;
 
@@ -210,6 +227,10 @@ namespace SFXTwistedFate.Champions
         {
             try
             {
+                if (!args.Unit.IsMe)
+                {
+                    return;
+                }
                 var hero = args.Target as Obj_AI_Hero;
                 if (hero != null)
                 {
@@ -256,9 +277,12 @@ namespace SFXTwistedFate.Champions
                 {
                     if (Cards.Has(CardColor.Red))
                     {
-                        var target = Orbwalker.ForcedTarget();
-                        if (target != null && target.NetworkId != args.Target.NetworkId)
+                        var bestMinion = BestRedMinion();
+                        var buff = ObjectManager.Player.GetBuff("redcardpreattack");
+                        if (bestMinion != null && bestMinion.NetworkId != args.Target.NetworkId &&
+                            (buff == null || buff.EndTime - Game.Time > 0.15f))
                         {
+                            Orbwalker.ForceTarget(bestMinion);
                             args.Process = false;
                         }
                     }
@@ -273,6 +297,30 @@ namespace SFXTwistedFate.Champions
         private bool IsWKillable(Obj_AI_Base target, int stage = 0)
         {
             return target != null && W.GetDamage(target, stage) - 5 > target.Health + target.HPRegenRate;
+        }
+
+        private void OnBuffManagerBuff(object sender, BuffManagerArgs args)
+        {
+            try
+            {
+                if (Q.IsReady())
+                {
+                    if (args.UniqueId.Equals("q-immobile") && BestTargetOnlyManager.Check("q-immobile", Q, args.Hero) &&
+                        Q.IsInRange(args.Hero))
+                    {
+                        var best = BestQPosition(
+                            args.Hero, GameObjects.EnemyHeroes.Select(e => e as Obj_AI_Base).ToList(), HitChance.High);
+                        if (!best.Item2.Equals(Vector3.Zero) && best.Item1 >= 1)
+                        {
+                            Q.Cast(best.Item2);
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Global.Logger.AddItem(new LogItem(ex));
+            }
         }
 
         protected override void OnPreUpdate() {}
@@ -314,6 +362,45 @@ namespace SFXTwistedFate.Champions
                     Cards.Select(CardColor.Gold);
                 }
             }
+        }
+
+        private Obj_AI_Base BestRedMinion()
+        {
+            var minions =
+                MinionManager.GetMinions(float.MaxValue, MinionTypes.All, MinionTeam.NotAlly)
+                    .Where(Orbwalking.InAutoAttackRange)
+                    .ToList();
+            var possibilities =
+                ListExtensions.ProduceEnumeration(minions.Select(p => p.ServerPosition.To2D()).ToList())
+                    .Where(p => p.Count > 0 && p.Count < 8)
+                    .ToList();
+            var hits = 0;
+            var center = Vector2.Zero;
+            var radius = float.MaxValue;
+            foreach (var possibility in possibilities)
+            {
+                var mec = MEC.GetMec(possibility);
+                if (mec.Radius < W.Width * 1.5f)
+                {
+                    if (possibility.Count > hits || possibility.Count == hits && mec.Radius < radius)
+                    {
+                        hits = possibility.Count;
+                        radius = mec.Radius;
+                        center = mec.Center;
+                        if (hits == minions.Count)
+                        {
+                            break;
+                        }
+                    }
+                }
+            }
+
+            if (hits > 0 && !center.Equals(Vector2.Zero))
+            {
+                return minions.OrderBy(m => m.Position.Distance(center.To3D())).FirstOrDefault();
+            }
+
+            return null;
         }
 
         private Tuple<int, Vector3> BestQPosition(Obj_AI_Base target, List<Obj_AI_Base> targets, HitChance hitChance)
@@ -600,6 +687,12 @@ namespace SFXTwistedFate.Champions
                 if (minions.Any())
                 {
                     Cards.Select(!ResourceManager.Check("lane-clear-blue") ? CardColor.Blue : CardColor.Red);
+                }
+                else if (
+                    GameObjects.EnemyTurrets.Any(
+                        t => t.IsValid && !t.IsDead && t.Health > 1 && t.Distance(Player) < W.Range))
+                {
+                    Cards.Select(CardColor.Blue);
                 }
             }
         }
@@ -1035,15 +1128,15 @@ namespace SFXTwistedFate.Champions
             {
                 try
                 {
-                    var wName = ObjectManager.Player.Spellbook.GetSpell(SpellSlot.W).Name;
+                    var spell = ObjectManager.Player.Spellbook.GetSpell(SpellSlot.W);
                     var wState = ObjectManager.Player.Spellbook.CanUseSpell(SpellSlot.W);
 
-                    if ((wState == SpellState.Ready && wName == "PickACard" &&
+                    if ((wState == SpellState.Ready && spell.Name == "PickACard" &&
                          (Status != SelectStatus.Selecting || !ShouldWait)) || ObjectManager.Player.IsDead)
                     {
                         Status = SelectStatus.Ready;
                     }
-                    else if (wState == SpellState.Cooldown && wName == "PickACard")
+                    else if (wState == SpellState.Cooldown && spell.Name == "PickACard")
                     {
                         ShouldSelect.Clear();
                         Status = SelectStatus.Cooldown;
@@ -1055,12 +1148,14 @@ namespace SFXTwistedFate.Champions
                     if (
                         ShouldSelect.Any(
                             s =>
-                                s == CardColor.Blue && wName == "bluecardlock" ||
-                                s == CardColor.Gold && wName == "goldcardlock" ||
-                                s == CardColor.Red && wName == "redcardlock"))
+                                s == CardColor.Blue && spell.Name == "bluecardlock" ||
+                                s == CardColor.Gold && spell.Name == "goldcardlock" ||
+                                s == CardColor.Red && spell.Name == "redcardlock"))
                     {
                         Utility.DelayAction.Add(
-                            Delay - Game.Ping / 2,
+                            (int)
+                                ((Delay - Game.Ping / 2) *
+                                 (LeagueSharp.Common.Utils.TickCount - _lastWSent <= 200 ? 0.5f : 1f)),
                             delegate { ObjectManager.Player.Spellbook.CastSpell(SpellSlot.W, false); });
                     }
                 }

@@ -173,21 +173,31 @@ namespace SFXAutoJump.Features.Activators
                 {
                     var jumpPosition = ObjectManager.Player.ServerPosition.Extend(
                         Game.CursorPos, Math.Min(_spell.Range, ObjectManager.Player.Position.Distance(Game.CursorPos)));
+                    var castPosition = ObjectManager.Player.ServerPosition.Extend(
+                        Game.CursorPos, Math.Min(600, ObjectManager.Player.Position.Distance(Game.CursorPos)));
 
                     var possibleJumps = GetPossibleObjects(jumpPosition);
-
                     var target = possibleJumps.FirstOrDefault();
                     if (target != null)
                     {
                         _spell.CastOnUnit(target);
                         return;
                     }
+
+                    var possibleJumps2 = GetPossibleObjects(castPosition);
+                    var target2 = possibleJumps2.FirstOrDefault();
+                    if (target2 != null)
+                    {
+                        _spell.CastOnUnit(target2);
+                        return;
+                    }
+
                     if (Game.Time - _lastWardTime >= 3 && Menu.Item(Name + "PlaceWards").GetValue<bool>())
                     {
                         var wardSlot = GetWardSlot();
                         if (wardSlot != SpellSlot.Unknown)
                         {
-                            ObjectManager.Player.Spellbook.CastSpell(wardSlot, jumpPosition);
+                            ObjectManager.Player.Spellbook.CastSpell(wardSlot, castPosition);
                             _lastWardTime = Game.Time;
                         }
                     }
@@ -203,6 +213,10 @@ namespace SFXAutoJump.Features.Activators
         {
             try
             {
+                if (ItemData.Trackers_Knife.GetItem().IsOwned() && ItemData.Trackers_Knife.GetItem().IsReady())
+                {
+                    return ItemData.Trackers_Knife.GetItem().Slots.FirstOrDefault();
+                }
                 if (ItemData.Sightstone.GetItem().IsOwned() && ItemData.Sightstone.GetItem().IsReady())
                 {
                     return ItemData.Sightstone.GetItem().Slots.FirstOrDefault();
@@ -211,24 +225,30 @@ namespace SFXAutoJump.Features.Activators
                 {
                     return ItemData.Ruby_Sightstone.GetItem().Slots.FirstOrDefault();
                 }
+                if (ItemData.Eye_of_the_Watchers.GetItem().IsOwned() && ItemData.Eye_of_the_Watchers.GetItem().IsReady())
+                {
+                    return ItemData.Eye_of_the_Watchers.GetItem().Slots.FirstOrDefault();
+                }
+                if (ItemData.Eye_of_the_Equinox.GetItem().IsOwned() && ItemData.Eye_of_the_Equinox.GetItem().IsReady())
+                {
+                    return ItemData.Eye_of_the_Equinox.GetItem().Slots.FirstOrDefault();
+                }
+                if (ItemData.Eye_of_the_Oasis.GetItem().IsOwned() && ItemData.Eye_of_the_Oasis.GetItem().IsReady())
+                {
+                    return ItemData.Eye_of_the_Oasis.GetItem().Slots.FirstOrDefault();
+                }
                 if (ItemData.Warding_Totem_Trinket.GetItem().IsOwned() &&
                     ItemData.Warding_Totem_Trinket.GetItem().IsReady())
                 {
                     return ItemData.Warding_Totem_Trinket.GetItem().Slots.FirstOrDefault();
                 }
-                if (ItemData.Greater_Stealth_Totem_Trinket.GetItem().IsOwned() &&
-                    ItemData.Greater_Stealth_Totem_Trinket.GetItem().IsReady())
+                if (ItemData.Farsight_Alteration.GetItem().IsOwned() && ItemData.Farsight_Alteration.GetItem().IsReady())
                 {
-                    return ItemData.Greater_Stealth_Totem_Trinket.GetItem().Slots.FirstOrDefault();
+                    return ItemData.Farsight_Alteration.GetItem().Slots.FirstOrDefault();
                 }
-                if (ItemData.Farsight_Orb_Trinket.GetItem().IsOwned() &&
-                    ItemData.Farsight_Orb_Trinket.GetItem().IsReady())
+                if (ItemData.Vision_Ward.GetItem().IsOwned() && ItemData.Vision_Ward.GetItem().IsReady())
                 {
-                    return ItemData.Farsight_Orb_Trinket.GetItem().Slots.FirstOrDefault();
-                }
-                if (ItemData.Stealth_Ward.GetItem().IsOwned() && ItemData.Stealth_Ward.GetItem().IsReady())
-                {
-                    return ItemData.Stealth_Ward.GetItem().Slots.FirstOrDefault();
+                    return ItemData.Vision_Ward.GetItem().Slots.FirstOrDefault();
                 }
             }
             catch (Exception ex)
