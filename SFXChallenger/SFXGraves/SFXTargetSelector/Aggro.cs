@@ -26,7 +26,6 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using LeagueSharp;
-using SFXGraves.Enumerations;
 using SFXGraves.Library.Logger;
 
 #endregion
@@ -65,7 +64,7 @@ namespace SFXGraves.SFXTargetSelector
         {
             try
             {
-                if (!sender.IsEnemy || TargetSelector.Mode != TargetSelectorModeType.Weights)
+                if (!sender.IsEnemy || TargetSelector.Mode != TargetSelector.TargetingMode.Weights)
                 {
                     return;
                 }

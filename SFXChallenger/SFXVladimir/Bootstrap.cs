@@ -72,6 +72,7 @@ namespace SFXVladimir
 
                         if (_champion != null)
                         {
+                            Global.Champion = _champion;
                             if (Global.Reset.Enabled)
                             {
                                 Reset.Force(Global.Name, Global.Reset.MaxAge, Weights.RestoreDefaultWeights);

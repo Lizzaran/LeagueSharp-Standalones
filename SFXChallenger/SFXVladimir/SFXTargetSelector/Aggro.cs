@@ -26,7 +26,6 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using LeagueSharp;
-using SFXVladimir.Enumerations;
 using SFXVladimir.Library.Logger;
 
 #endregion
@@ -65,7 +64,7 @@ namespace SFXVladimir.SFXTargetSelector
         {
             try
             {
-                if (!sender.IsEnemy || TargetSelector.Mode != TargetSelectorModeType.Weights)
+                if (!sender.IsEnemy || TargetSelector.Mode != TargetSelector.TargetingMode.Weights)
                 {
                     return;
                 }

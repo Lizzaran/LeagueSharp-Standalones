@@ -163,10 +163,7 @@ namespace SFXOrianna
 
         public static void Reboot()
         {
-            if (_started)
-            {
-                Shutdown();
-            }
+            Shutdown();
             Boot();
         }
     }

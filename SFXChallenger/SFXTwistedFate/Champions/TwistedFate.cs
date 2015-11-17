@@ -623,6 +623,8 @@ namespace SFXTwistedFate.Champions
                     }
                 }
             }
+
+            ItemsSummonersLogic(null);
         }
 
         protected override void Harass()

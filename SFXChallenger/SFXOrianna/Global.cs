@@ -25,6 +25,7 @@
 using System;
 using System.IO;
 using System.Linq;
+using SFXOrianna.Interfaces;
 using SFXOrianna.Library.Logger;
 
 #endregion
@@ -35,8 +36,11 @@ namespace SFXOrianna
     {
         public static string Prefix = "SFX";
         public static string Name = "SFXOrianna";
+        public static IChampion Champion;
         public static ILogger Logger;
-        public static string LogDir = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, Name + " - Logs");
+        public static string BaseDir = AppDomain.CurrentDomain.BaseDirectory;
+        public static string LogDir = Path.Combine(BaseDir, Name + " - Logs");
+        public static string CacheDir = Path.Combine(BaseDir, Name + " - Cache");
         public static string UpdatePath = "Lizzaran/LeagueSharp-Standalones/master/SFXChallenger/SFXOrianna";
 
         static Global()

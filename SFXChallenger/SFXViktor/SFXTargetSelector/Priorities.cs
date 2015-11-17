@@ -25,8 +25,8 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using LeagueSharp;
 using LeagueSharp.Common;
-using SFXViktor.Enumerations;
 using SFXViktor.Library.Logger;
 
 #endregion
@@ -35,6 +35,14 @@ namespace SFXViktor.SFXTargetSelector
 {
     public static class Priorities
     {
+        public enum Priority
+        {
+            Highest = 4,
+            High = 3,
+            Medium = 2,
+            Low = 1
+        }
+
         public const int MinPriority = 1;
         public const int MaxPriority = 5;
         private static Menu _mainMenu;
@@ -56,7 +64,7 @@ namespace SFXViktor.SFXTargetSelector
                                 "Orianna", "Quinn", "Sivir", "Syndra", "Talon", "Teemo", "Tristana", "TwistedFate",
                                 "Twitch", "Varus", "Vayne", "Veigar", "VelKoz", "Viktor", "Xerath", "Zed", "Ziggs"
                             },
-                        Type = TargetSelectorPriorityType.Highest
+                        Priority = Priority.Highest
                     },
                     new Item
                     {
@@ -67,7 +75,7 @@ namespace SFXViktor.SFXTargetSelector
                                 "Kassadin", "Kayle", "Kha'Zix", "Lissandra", "Mordekaiser", "Nidalee", "Riven", "Shaco",
                                 "Vladimir", "Yasuo", "Zilean"
                             },
-                        Type = TargetSelectorPriorityType.High
+                        Priority = Priority.High
                     },
                     new Item
                     {
@@ -78,7 +86,7 @@ namespace SFXViktor.SFXTargetSelector
                                 "Lee Sin", "Maokai", "Morgana", "Nocturne", "Pantheon", "Poppy", "Rengar", "Rumble",
                                 "Ryze", "Swain", "Trundle", "Tryndamere", "Udyr", "Urgot", "Vi", "XinZhao", "RekSai"
                             },
-                        Type = TargetSelectorPriorityType.Medium
+                        Priority = Priority.Medium
                     },
                     new Item
                     {
@@ -91,7 +99,7 @@ namespace SFXViktor.SFXTargetSelector
                                 "Sion", "Skarner", "Sona", "Soraka", "Taric", "Thresh", "Volibear", "Warwick",
                                 "MonkeyKing", "Yorick", "Zac", "Zyra"
                             },
-                        Type = TargetSelectorPriorityType.Low
+                        Priority = Priority.Low
                     }
                 };
             }
@@ -123,8 +131,7 @@ namespace SFXViktor.SFXTargetSelector
                     if (autoPriority.GetValue<bool>())
                     {
                         item.SetShared()
-                            .SetValue(
-                                new Slider((int) GetDefaultPriority(enemy.Hero.ChampionName), MinPriority, MaxPriority));
+                            .SetValue(new Slider((int) GetDefaultPriority(enemy.Hero), MinPriority, MaxPriority));
                     }
                 }
 
@@ -138,8 +145,7 @@ namespace SFXViktor.SFXTargetSelector
                                 _mainMenu.Item(prioritiesMenu.Name + "." + enemy.Hero.ChampionName)
                                     .SetShared()
                                     .SetValue(
-                                        new Slider(
-                                            (int) GetDefaultPriority(enemy.Hero.ChampionName), MinPriority, MaxPriority));
+                                        new Slider((int) GetDefaultPriority(enemy.Hero), MinPriority, MaxPriority));
                             }
                         }
                     };
@@ -150,30 +156,30 @@ namespace SFXViktor.SFXTargetSelector
             }
         }
 
-        public static TargetSelectorPriorityType GetDefaultPriority(string name)
+        public static Priority GetDefaultPriority(Obj_AI_Hero hero)
         {
             try
             {
-                var item = Items.FirstOrDefault(i => i.Champions.Contains(name));
+                var item = Items.FirstOrDefault(i => i.Champions.Contains(hero.ChampionName));
                 if (item != null)
                 {
-                    return item.Type;
+                    return item.Priority;
                 }
             }
             catch (Exception ex)
             {
                 Global.Logger.AddItem(new LogItem(ex));
             }
-            return TargetSelectorPriorityType.Low;
+            return Priority.Low;
         }
 
-        public static int GetPriority(string name)
+        public static int GetPriority(Obj_AI_Hero hero)
         {
             try
             {
                 if (_mainMenu != null)
                 {
-                    var item = _mainMenu.Item(_mainMenu.Name + ".priorities." + name);
+                    var item = _mainMenu.Item(_mainMenu.Name + ".priorities." + hero.ChampionName);
                     if (item != null)
                     {
                         return item.GetValue<Slider>().Value;
@@ -184,14 +190,55 @@ namespace SFXViktor.SFXTargetSelector
             {
                 Global.Logger.AddItem(new LogItem(ex));
             }
-            return (int) TargetSelectorPriorityType.Low;
+            return (int) Priority.Low;
+        }
+
+        public static void SetPriority(Obj_AI_Hero hero, int value)
+        {
+            try
+            {
+                if (_mainMenu != null)
+                {
+                    var item = _mainMenu.Item(_mainMenu.Name + ".priorities." + hero.ChampionName);
+                    if (item != null)
+                    {
+                        item.SetValue(
+                            new Slider(Math.Max(MinPriority, Math.Min(MaxPriority, value)), MinPriority, MaxPriority));
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Global.Logger.AddItem(new LogItem(ex));
+            }
+        }
+
+        public static void SetPriority(Obj_AI_Hero hero, Priority type)
+        {
+            try
+            {
+                if (_mainMenu != null)
+                {
+                    var item = _mainMenu.Item(_mainMenu.Name + ".priorities." + hero.ChampionName);
+                    if (item != null)
+                    {
+                        item.SetValue(
+                            new Slider(
+                                Math.Max(MinPriority, Math.Min(MaxPriority, (int) type)), MinPriority, MaxPriority));
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Global.Logger.AddItem(new LogItem(ex));
+            }
         }
 
         public static IEnumerable<Targets.Item> OrderChampions(List<Targets.Item> heroes)
         {
             try
             {
-                return heroes.OrderByDescending(x => GetPriority(x.Hero.ChampionName));
+                return heroes.OrderByDescending(x => GetPriority(x.Hero));
             }
             catch (Exception ex)
             {
@@ -202,7 +249,7 @@ namespace SFXViktor.SFXTargetSelector
 
         public class Item
         {
-            public TargetSelectorPriorityType Type { get; set; }
+            public Priority Priority { get; set; }
             public string[] Champions { get; set; }
         }
     }

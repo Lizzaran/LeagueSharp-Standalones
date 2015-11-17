@@ -28,7 +28,6 @@ using System.Drawing;
 using System.Linq;
 using LeagueSharp;
 using LeagueSharp.Common;
-using SFXOrianna.Enumerations;
 using SFXOrianna.Library;
 using SFXOrianna.Library.Extensions.LeagueSharp;
 using SFXOrianna.Library.Logger;
@@ -109,8 +108,8 @@ namespace SFXOrianna.SFXTargetSelector
                     new Item(
                         "gold", "Acquired Gold", 0, false,
                         t =>
-                            (t.MinionsKilled + t.NeutralMinionsKilled) * 22.35f + t.ChampionsKilled * 300f +
-                            t.Assists * 95f),
+                            (t.MinionsKilled + t.NeutralMinionsKilled) * 27.35f + t.ChampionsKilled * 300f +
+                            t.Assists * 85f),
                     new Item(
                         "team-focus", "Team Focus", 0, false,
                         t =>
@@ -262,7 +261,7 @@ namespace SFXOrianna.SFXTargetSelector
         {
             try
             {
-                if (_mainMenu == null || TargetSelector.Mode != TargetSelectorModeType.Weights)
+                if (_mainMenu == null || TargetSelector.Mode != TargetSelector.TargetingMode.Weights)
                 {
                     return;
                 }
@@ -311,7 +310,7 @@ namespace SFXOrianna.SFXTargetSelector
         {
             try
             {
-                if (_mainMenu == null || TargetSelector.Mode != TargetSelectorModeType.Weights)
+                if (_mainMenu == null || TargetSelector.Mode != TargetSelector.TargetingMode.Weights)
                 {
                     return;
                 }

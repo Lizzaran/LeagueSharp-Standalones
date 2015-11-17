@@ -163,10 +163,7 @@ namespace SFXViktor
 
         public static void Reboot()
         {
-            if (_started)
-            {
-                Shutdown();
-            }
+            Shutdown();
             Boot();
         }
     }

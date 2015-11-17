@@ -33,6 +33,10 @@ using SFXVladimir.Library.Logger;
 using SFXVladimir.Managers;
 using SFXVladimir.Menus;
 using SFXVladimir.SFXTargetSelector;
+using MinionManager = SFXVladimir.Library.MinionManager;
+using MinionOrderTypes = SFXVladimir.Library.MinionOrderTypes;
+using MinionTeam = SFXVladimir.Library.MinionTeam;
+using MinionTypes = SFXVladimir.Library.MinionTypes;
 using Orbwalking = SFXVladimir.Wrappers.Orbwalking;
 using Spell = SFXVladimir.Wrappers.Spell;
 using TargetSelector = SFXVladimir.SFXTargetSelector.TargetSelector;
@@ -43,12 +47,15 @@ namespace SFXVladimir.Abstracts
 {
     internal abstract class Champion : IChampion
     {
+        private static float _minionSearchRange;
         protected readonly Obj_AI_Hero Player = ObjectManager.Player;
+        private Obj_AI_Base _nearestMinion;
         private List<Spell> _spells;
         private bool _useMuramana;
         protected Spell E;
         protected Spell Q;
         protected Spell R;
+        protected UltimateManager Ultimate;
         protected Spell W;
 
         protected Champion()
@@ -96,7 +103,10 @@ namespace SFXVladimir.Abstracts
         {
             try
             {
-                LaneClear();
+                if (_nearestMinion == null || !_nearestMinion.IsValid || _nearestMinion.Team != Player.Team)
+                {
+                    LaneClear();
+                }
             }
             catch (Exception ex)
             {
@@ -108,7 +118,10 @@ namespace SFXVladimir.Abstracts
         {
             try
             {
-                JungleClear();
+                if (_nearestMinion == null || !_nearestMinion.IsValid || _nearestMinion.Team == GameObjectTeam.Neutral)
+                {
+                    JungleClear();
+                }
             }
             catch (Exception ex)
             {
@@ -184,7 +197,54 @@ namespace SFXVladimir.Abstracts
         {
             try
             {
+                if (Orbwalker.ActiveMode == Orbwalking.OrbwalkingMode.LaneClear)
+                {
+                    _nearestMinion =
+                        MinionManager.GetMinions(
+                            _minionSearchRange, MinionTypes.All, MinionTeam.NotAlly, MinionOrderTypes.None)
+                            .OrderBy(m => m.Distance(Player))
+                            .FirstOrDefault();
+                }
                 OnPostUpdate();
+            }
+            catch (Exception ex)
+            {
+                Global.Logger.AddItem(new LogItem(ex));
+            }
+        }
+
+        protected void ItemsSummonersLogic(Obj_AI_Hero ultimateTarget, bool single = true)
+        {
+            try
+            {
+                var range =
+                    Math.Max(
+                        SummonerManager.SummonerSpells.Where(s => s.CastType == CastType.Target).Max(s => s.Range),
+                        ItemManager.Items.Where(
+                            i => i.EffectFlags.HasFlag(EffectFlags.Damage) && i.Flags.HasFlag(ItemFlags.Offensive))
+                            .Max(i => i.Range));
+                if (ultimateTarget == null || Ultimate == null || !ultimateTarget.IsValidTarget(range))
+                {
+                    var target = TargetSelector.GetTarget(range);
+                    if (target != null)
+                    {
+                        if (ItemManager.CalculateComboDamage(target) + SummonerManager.CalculateComboDamage(target) >
+                            target.Health)
+                        {
+                            ItemManager.UseComboItems(ultimateTarget);
+                            SummonerManager.UseComboSummoners(ultimateTarget);
+                        }
+                    }
+                }
+                else
+                {
+                    if (Ultimate.GetDamage(ultimateTarget, UltimateModeType.Combo, single ? 1 : 5) >
+                        ultimateTarget.Health)
+                    {
+                        ItemManager.UseComboItems(ultimateTarget);
+                        SummonerManager.UseComboSummoners(ultimateTarget);
+                    }
+                }
             }
             catch (Exception ex)
             {
@@ -211,6 +271,14 @@ namespace SFXVladimir.Abstracts
                 OnLoad();
                 SetupSpells();
                 SetupMenu();
+
+                _minionSearchRange = Math.Min(
+                    2000,
+                    Math.Max(
+                        ObjectManager.Player.AttackRange + ObjectManager.Player.BoundingRadius * 2,
+                        Spells.Select(spell => spell.IsChargedSpell ? spell.ChargedMaxRange : spell.Range)
+                            .Concat(new[] { _minionSearchRange })
+                            .Max()));
 
                 Weights.Range = Math.Max(
                     Weights.Range,
@@ -255,7 +323,8 @@ namespace SFXVladimir.Abstracts
                         if (Orbwalker.ActiveMode == Orbwalking.OrbwalkingMode.Combo)
                         {
                             var enemy = target as Obj_AI_Hero;
-                            if (enemy != null)
+                            if (enemy != null &&
+                                (Ultimate == null || Ultimate.GetDamage(enemy, UltimateModeType.Combo, 1) > enemy.Health))
                             {
                                 ItemManager.UseComboItems(enemy);
                                 SummonerManager.UseComboSummoners(enemy);
