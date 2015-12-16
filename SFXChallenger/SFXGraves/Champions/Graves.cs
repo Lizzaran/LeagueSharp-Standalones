@@ -35,12 +35,11 @@ using SFXGraves.Library;
 using SFXGraves.Library.Logger;
 using SFXGraves.Managers;
 using SharpDX;
-using DamageType = SFXGraves.Enumerations.DamageType;
 using MinionManager = SFXGraves.Library.MinionManager;
 using MinionOrderTypes = SFXGraves.Library.MinionOrderTypes;
 using MinionTeam = SFXGraves.Library.MinionTeam;
 using MinionTypes = SFXGraves.Library.MinionTypes;
-using Orbwalking = SFXGraves.Wrappers.Orbwalking;
+using Orbwalking = SFXGraves.SFXTargetSelector.Orbwalking;
 using Spell = SFXGraves.Wrappers.Spell;
 using TargetSelector = SFXGraves.SFXTargetSelector.TargetSelector;
 using Utils = SFXGraves.Helpers.Utils;
@@ -71,7 +70,7 @@ namespace SFXGraves.Champions
         protected override void SetupSpells()
         {
             Q = new Spell(SpellSlot.Q, 850f);
-            Q.SetSkillshot(0.25f, 15f * (float) Math.PI / 180, 2000f, false, SkillshotType.SkillshotCone);
+            Q.SetSkillshot(0.25f, 60f, 2000f, false, SkillshotType.SkillshotLine);
 
             W = new Spell(SpellSlot.W, 900f, DamageType.Magical);
             W.SetSkillshot(0.35f, 250f, 1650f, false, SkillshotType.SkillshotCircle);
@@ -138,19 +137,30 @@ namespace SFXGraves.Champions
                 });
             harassMenu.AddItem(new MenuItem(harassMenu.Name + ".q", "Use Q").SetValue(true));
 
-            var laneclearMenu = Menu.AddSubMenu(new Menu("Lane Clear", Menu.Name + ".lane-clear"));
+            var laneClearMenu = Menu.AddSubMenu(new Menu("Lane Clear", Menu.Name + ".lane-clear"));
             ResourceManager.AddToMenu(
-                laneclearMenu,
+                laneClearMenu,
                 new ResourceManagerArgs(
                     "lane-clear", ResourceType.Mana, ResourceValueType.Percent, ResourceCheckType.Minimum)
                 {
                     Advanced = true,
                     LevelRanges = new SortedList<int, int> { { 1, 6 }, { 6, 12 }, { 12, 18 } },
-                    DefaultValues = new List<int> { 50, 30, 30 },
-                    IgnoreJungleOption = true
+                    DefaultValues = new List<int> { 50, 30, 30 }
                 });
-            laneclearMenu.AddItem(new MenuItem(laneclearMenu.Name + ".q", "Use Q").SetValue(true));
-            laneclearMenu.AddItem(new MenuItem(laneclearMenu.Name + ".q-min", "Q Min.").SetValue(new Slider(3, 1, 5)));
+            laneClearMenu.AddItem(new MenuItem(laneClearMenu.Name + ".q", "Use Q").SetValue(true));
+            laneClearMenu.AddItem(new MenuItem(laneClearMenu.Name + ".q-min", "Q Min.").SetValue(new Slider(3, 1, 5)));
+
+            var jungleClearMenu = Menu.AddSubMenu(new Menu("Jungle Clear", Menu.Name + ".jungle-clear"));
+            ResourceManager.AddToMenu(
+                jungleClearMenu,
+                new ResourceManagerArgs(
+                    "jungle-clear", ResourceType.Mana, ResourceValueType.Percent, ResourceCheckType.Minimum)
+                {
+                    Advanced = true,
+                    LevelRanges = new SortedList<int, int> { { 1, 6 }, { 6, 12 }, { 12, 18 } },
+                    DefaultValues = new List<int> { 30, 10, 10 }
+                });
+            jungleClearMenu.AddItem(new MenuItem(jungleClearMenu.Name + ".q", "Use Q").SetValue(true));
 
             var fleeMenu = Menu.AddSubMenu(new Menu("Flee", Menu.Name + ".flee"));
             fleeMenu.AddItem(new MenuItem(fleeMenu.Name + ".e", "Use E").SetValue(true));
@@ -192,7 +202,10 @@ namespace SFXGraves.Champions
             IndicatorManager.Finale();
         }
 
-        protected override void OnPreUpdate() {}
+        protected override void OnPreUpdate()
+        {
+            Orbwalker.SetAttack(!IsReloading());
+        }
 
         protected override void OnPostUpdate()
         {
@@ -242,6 +255,16 @@ namespace SFXGraves.Champions
             }
         }
 
+        private bool IsReloading()
+        {
+            return !Player.HasBuff("gravesbasicattackammo1");
+        }
+
+        private int GetAmmoCount()
+        {
+            return Player.HasBuff("gravesbasicattackammo2") ? 2 : (!IsReloading() ? 1 : 0);
+        }
+
         protected override void Combo()
         {
             var useQ = Menu.Item(Menu.Name + ".combo.q").GetValue<bool>() && Q.IsReady();
@@ -260,9 +283,10 @@ namespace SFXGraves.Champions
                     }
                 }
             }
-            if (useE)
+            if (useE && !Player.IsWindingUp && !IsReloading())
             {
-                var target = TargetSelector.GetTarget((E.Range + Player.AttackRange) * 0.9f, E.DamageType);
+                var target = TargetSelector.GetTarget(
+                    E.Range + Player.AttackRange + Player.BoundingRadius, E.DamageType);
                 if (target != null)
                 {
                     var pos = Menu.Item(Menu.Name + ".combo.e-mode").GetValue<StringList>().SelectedIndex == 0
@@ -270,23 +294,57 @@ namespace SFXGraves.Champions
                             E, target, Menu.Item(Menu.Name + ".combo.e-safety").GetValue<Slider>().Value)
                         : Player.Position.Extend(
                             Game.CursorPos, Math.Min(E.Range, Player.Position.Distance(Game.CursorPos)));
-                    if (!pos.Equals(Vector3.Zero) && !pos.IsUnderTurret(false))
+
+                    if (!pos.Equals(Vector3.Zero))
                     {
-                        E.Cast(pos);
+                        if (GetAmmoCount() == 1 && !pos.IsUnderTurret(false) ||
+                            (!GameObjects.EnemyHeroes.Any(e => e.IsValidTarget() && Orbwalking.InAutoAttackRange(e)) &&
+                             GameObjects.EnemyHeroes.Any(
+                                 e =>
+                                     e.IsValidTarget() &&
+                                     pos.Distance(e.Position) < Orbwalking.GetRealAutoAttackRange(e)) &&
+                             target.Health < Player.GetAutoAttackDamage(target) * 2))
+                        {
+                            E.Cast(pos);
+                        }
                     }
                 }
             }
             if (useQ)
             {
-                Casting.SkillShot(Q, Q.GetHitChance("combo"));
+                QLogic(Q.GetHitChance("combo"));
             }
             if (useW)
             {
                 var target = TargetSelector.GetTarget(W);
-                var best = CPrediction.Circle(W, target, W.GetHitChance("combo"));
-                if (best.TotalHits > 0 && !best.CastPosition.Equals(Vector3.Zero))
+                if (target != null)
                 {
-                    W.Cast(best.CastPosition);
+                    var best = CPrediction.Circle(W, target, W.GetHitChance("combo"));
+                    if (best.TotalHits > 0 && !best.CastPosition.Equals(Vector3.Zero))
+                    {
+                        W.Cast(best.CastPosition);
+                    }
+                }
+            }
+        }
+
+        private void QLogic(HitChance hitChance)
+        {
+            var target = TargetSelector.GetTarget(Q);
+            if (target != null)
+            {
+                var prediction = CPrediction.Line(Q, target, hitChance, false);
+                if (prediction.TotalHits >= 1)
+                {
+                    var firstHit = prediction.Hits.OrderBy(h => h.Distance(Player)).FirstOrDefault();
+                    if (firstHit != null && !Utils.IsWallBetween(Player.Position, firstHit.Position))
+                    {
+                        if (!GameObjects.EnemyHeroes.Any(e => e.IsValidTarget() && Orbwalking.InAutoAttackRange(e)) ||
+                            IsReloading() || Q.IsKillable(target) || prediction.TotalHits >= 2)
+                        {
+                            Q.Cast(prediction.CastPosition);
+                        }
+                    }
                 }
             }
         }
@@ -298,7 +356,9 @@ namespace SFXGraves.Champions
                 if (Ultimate.IsActive(mode))
                 {
                     var hits = GetRHits(target);
-                    if (Ultimate.Check(mode, hits.Item2))
+                    if (Ultimate.Check(mode, hits.Item2) &&
+                        (hits.Item2.Any(h => R.GetDamage(h) * 0.95f > h.Health) ||
+                         hits.Item2.Any(h => h.Distance(Player) + 300 < Orbwalking.GetRealAutoAttackRange(h) * 0.9f)))
                     {
                         R.Cast(hits.Item3);
                         return true;
@@ -318,7 +378,12 @@ namespace SFXGraves.Champions
             {
                 if (Ultimate.ShouldSingle(mode))
                 {
-                    foreach (var target in GameObjects.EnemyHeroes.Where(t => Ultimate.CheckSingle(mode, t)))
+                    foreach (var target in
+                        GameObjects.EnemyHeroes.Where(
+                            t =>
+                                Ultimate.CheckSingle(mode, t) &&
+                                (R.GetDamage(t) * 0.95f > t.Health ||
+                                 t.Distance(Player) + 300 < Orbwalking.GetRealAutoAttackRange(t) * 0.8f)))
                     {
                         var hits = GetRHits(target);
                         if (hits.Item1 > 0)
@@ -346,6 +411,7 @@ namespace SFXGraves.Champions
 
                 var damage = 0f;
                 var totalMana = 0f;
+                var didR = false;
 
                 if (r && R.IsReady() && (!rangeCheck || R.IsInRange(target, R.Range + R2.Range)))
                 {
@@ -354,9 +420,10 @@ namespace SFXGraves.Champions
                     {
                         totalMana += rMana;
                         damage += R.GetDamage(target);
+                        didR = true;
                     }
                 }
-                if (q && Q.IsReady() && (!rangeCheck || Q.IsInRange(target)))
+                if (q && Q.IsReady() && (!rangeCheck || target.Distance(Player) < Q.Range - (didR ? 200 : 0)))
                 {
                     var qMana = Q.ManaCost * resMulti;
                     if (totalMana + qMana <= Player.Mana)
@@ -364,7 +431,8 @@ namespace SFXGraves.Champions
                         damage += Q.GetDamage(target);
                     }
                 }
-                if (!rangeCheck || target.Distance(Player) <= Orbwalking.GetRealAutoAttackRange(target) * 0.85f)
+                if (!rangeCheck ||
+                    target.Distance(Player) <= Orbwalking.GetRealAutoAttackRange(target) * (didR ? 0.65 : 0.85f))
                 {
                     damage += 2 * (float) Player.GetAutoAttackDamage(target, true);
                 }
@@ -436,43 +504,84 @@ namespace SFXGraves.Champions
             {
                 return;
             }
-
             if (Menu.Item(Menu.Name + ".harass.q").GetValue<bool>() && Q.IsReady())
             {
-                Casting.SkillShot(Q, Q.GetHitChance("harass"));
+                QLogic(Q.GetHitChance("harass"));
             }
         }
 
         protected override void LaneClear()
         {
-            if (!ResourceManager.Check("lane-clear"))
-            {
-                return;
-            }
-
-            var useQ = Menu.Item(Menu.Name + ".lane-clear.q").GetValue<bool>() && Q.IsReady();
+            var useQ = Menu.Item(Menu.Name + ".lane-clear.q").GetValue<bool>() && Q.IsReady() &&
+                       ResourceManager.Check("lane-clear");
             if (useQ)
             {
-                Casting.Farm(
-                    Q, MinionManager.GetMinions(Q.Range),
-                    Menu.Item(Menu.Name + ".lane-clear.q-min").GetValue<Slider>().Value, 200f);
+                QFarmLogic(
+                    MinionManager.GetMinions(Q.Range),
+                    Menu.Item(Menu.Name + ".lane-clear.q-min").GetValue<Slider>().Value);
             }
         }
 
         protected override void JungleClear()
         {
-            if (!ResourceManager.Check("lane-clear") && !ResourceManager.IgnoreJungle("lane-clear"))
-            {
-                return;
-            }
-
-            var useQ = Menu.Item(Menu.Name + ".lane-clear.q").GetValue<bool>() && Q.IsReady();
+            var useQ = Menu.Item(Menu.Name + ".jungle-clear.q").GetValue<bool>() && Q.IsReady() &&
+                       ResourceManager.Check("jungle-clear");
             if (useQ)
             {
-                Casting.Farm(
-                    Q,
+                QFarmLogic(
                     MinionManager.GetMinions(Q.Range, MinionTypes.All, MinionTeam.Neutral, MinionOrderTypes.MaxHealth),
-                    1, 200f);
+                    1);
+            }
+        }
+
+        private void QFarmLogic(List<Obj_AI_Base> minions, int min)
+        {
+            try
+            {
+                if (!Q.IsReady() || minions.Count == 0)
+                {
+                    return;
+                }
+                var totalHits = 0;
+                var castPos = Vector3.Zero;
+
+                var positions = (from minion in minions
+                    let pred = Q.GetPrediction(minion)
+                    where pred.Hitchance >= HitChance.Medium
+                    where !Utils.IsWallBetween(Player.Position, pred.UnitPosition)
+                    select new Tuple<Obj_AI_Base, Vector3>(minion, pred.UnitPosition)).ToList();
+
+                if (positions.Any())
+                {
+                    foreach (var position in positions)
+                    {
+                        var rect = new Geometry.Polygon.Rectangle(
+                            ObjectManager.Player.Position, ObjectManager.Player.Position.Extend(position.Item2, Q.Range),
+                            Q.Width);
+                        var count =
+                            positions.Select(
+                                position2 =>
+                                    new Geometry.Polygon.Circle(position2.Item2, position2.Item1.BoundingRadius * 0.9f))
+                                .Count(circle => circle.Points.Any(p => rect.IsInside(p)));
+                        if (count > totalHits)
+                        {
+                            totalHits = count;
+                            castPos = position.Item2;
+                        }
+                        if (totalHits == minions.Count)
+                        {
+                            break;
+                        }
+                    }
+                    if (!castPos.Equals(Vector3.Zero) && totalHits >= min)
+                    {
+                        Q.Cast(castPos);
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Global.Logger.AddItem(new LogItem(ex));
             }
         }
 
@@ -492,7 +601,7 @@ namespace SFXGraves.Champions
                     GameObjects.EnemyHeroes.Where(e => e.IsValidTarget(Q.Range * 1.2f) && Q.IsKillable(e))
                         .Select(enemy => Q.GetPrediction(enemy, true))
                         .FirstOrDefault(pred => pred.Hitchance >= HitChance.High);
-                if (fPredEnemy != null)
+                if (fPredEnemy != null && !Utils.IsWallBetween(Player.Position, fPredEnemy.CastPosition))
                 {
                     Q.Cast(fPredEnemy.CastPosition);
                 }

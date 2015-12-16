@@ -94,6 +94,7 @@ namespace SFXAutoLeveler.Classes
                 {
                     OnEnable();
                 }
+
                 Handled = true;
             }
             catch (Exception ex)

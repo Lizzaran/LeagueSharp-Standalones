@@ -94,6 +94,7 @@ namespace SFXClone.Classes
                 {
                     OnEnable();
                 }
+
                 Handled = true;
             }
             catch (Exception ex)

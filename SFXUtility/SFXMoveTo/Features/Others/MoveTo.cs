@@ -80,7 +80,7 @@ namespace SFXMoveTo.Features.Others
             }
         }
 
-        protected override sealed void OnLoad()
+        protected sealed override void OnLoad()
         {
             try
             {

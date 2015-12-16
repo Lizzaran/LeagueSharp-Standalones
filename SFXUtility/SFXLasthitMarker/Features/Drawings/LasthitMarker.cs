@@ -112,7 +112,7 @@ namespace SFXLasthitMarker.Features.Drawings
             }
         }
 
-        protected override sealed void OnLoad()
+        protected sealed override void OnLoad()
         {
             try
             {

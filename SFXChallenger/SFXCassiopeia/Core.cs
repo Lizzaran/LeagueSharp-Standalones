@@ -27,7 +27,7 @@ using LeagueSharp;
 using LeagueSharp.Common;
 using SFXCassiopeia.Interfaces;
 using SFXCassiopeia.Library.Logger;
-using Orbwalking = SFXCassiopeia.Wrappers.Orbwalking;
+using Orbwalking = SFXCassiopeia.SFXTargetSelector.Orbwalking;
 
 #endregion
 

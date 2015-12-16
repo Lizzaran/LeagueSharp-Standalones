@@ -32,12 +32,11 @@ using SFXTwistedFate.Interfaces;
 using SFXTwistedFate.Library.Logger;
 using SFXTwistedFate.Managers;
 using SFXTwistedFate.Menus;
-using SFXTwistedFate.SFXTargetSelector;
 using MinionManager = SFXTwistedFate.Library.MinionManager;
 using MinionOrderTypes = SFXTwistedFate.Library.MinionOrderTypes;
 using MinionTeam = SFXTwistedFate.Library.MinionTeam;
 using MinionTypes = SFXTwistedFate.Library.MinionTypes;
-using Orbwalking = SFXTwistedFate.Wrappers.Orbwalking;
+using Orbwalking = SFXTwistedFate.SFXTargetSelector.Orbwalking;
 using Spell = SFXTwistedFate.Wrappers.Spell;
 using TargetSelector = SFXTwistedFate.SFXTargetSelector.TargetSelector;
 
@@ -48,7 +47,7 @@ namespace SFXTwistedFate.Abstracts
     internal abstract class Champion : IChampion
     {
         private static float _minionSearchRange;
-        protected readonly Obj_AI_Hero Player = ObjectManager.Player;
+        protected readonly Obj_AI_Hero Player;
         private Obj_AI_Base _nearestMinion;
         private List<Spell> _spells;
         private bool _useMuramana;
@@ -60,6 +59,7 @@ namespace SFXTwistedFate.Abstracts
 
         protected Champion()
         {
+            Player = ObjectManager.Player;
             Core.OnBoot += OnCoreBoot;
         }
 
@@ -176,6 +176,14 @@ namespace SFXTwistedFate.Abstracts
         {
             try
             {
+                if (Orbwalker.ActiveMode == Orbwalking.OrbwalkingMode.LaneClear)
+                {
+                    _nearestMinion =
+                        MinionManager.GetMinions(
+                            _minionSearchRange, MinionTypes.All, MinionTeam.NotAlly, MinionOrderTypes.None)
+                            .OrderBy(m => m.Distance(Player))
+                            .FirstOrDefault();
+                }
                 if (!_useMuramana)
                 {
                     ItemManager.Muramana(null, false);
@@ -197,14 +205,6 @@ namespace SFXTwistedFate.Abstracts
         {
             try
             {
-                if (Orbwalker.ActiveMode == Orbwalking.OrbwalkingMode.LaneClear)
-                {
-                    _nearestMinion =
-                        MinionManager.GetMinions(
-                            _minionSearchRange, MinionTypes.All, MinionTeam.NotAlly, MinionOrderTypes.None)
-                            .OrderBy(m => m.Distance(Player))
-                            .FirstOrDefault();
-                }
                 OnPostUpdate();
             }
             catch (Exception ex)
@@ -217,12 +217,13 @@ namespace SFXTwistedFate.Abstracts
         {
             try
             {
-                var range =
+                var range = Math.Max(
+                    600,
                     Math.Max(
                         SummonerManager.SummonerSpells.Where(s => s.CastType == CastType.Target).Max(s => s.Range),
                         ItemManager.Items.Where(
                             i => i.EffectFlags.HasFlag(EffectFlags.Damage) && i.Flags.HasFlag(ItemFlags.Offensive))
-                            .Max(i => i.Range));
+                            .Max(i => i.Range)));
                 if (ultimateTarget == null || Ultimate == null || !ultimateTarget.IsValidTarget(range))
                 {
                     var target = TargetSelector.GetTarget(range);
@@ -231,8 +232,8 @@ namespace SFXTwistedFate.Abstracts
                         if (ItemManager.CalculateComboDamage(target) + SummonerManager.CalculateComboDamage(target) >
                             target.Health)
                         {
-                            ItemManager.UseComboItems(ultimateTarget);
-                            SummonerManager.UseComboSummoners(ultimateTarget);
+                            ItemManager.UseComboItems(target);
+                            SummonerManager.UseComboSummoners(target);
                         }
                     }
                 }
@@ -280,8 +281,8 @@ namespace SFXTwistedFate.Abstracts
                             .Concat(new[] { _minionSearchRange })
                             .Max()));
 
-                Weights.Range = Math.Max(
-                    Weights.Range,
+                TargetSelector.Weights.Range = Math.Max(
+                    TargetSelector.Weights.Range,
                     Spells.Select(e => e.Range).DefaultIfEmpty(Orbwalking.GetRealAutoAttackRange(null) * 1.2f).Max());
 
                 Core.OnPreUpdate += OnCorePreUpdate;
@@ -404,7 +405,12 @@ namespace SFXTwistedFate.Abstracts
                 Orbwalker = new Orbwalking.Orbwalker(SFXMenu.AddSubMenu(new Menu("Orbwalker", SFXMenu.Name + ".orb")));
 
                 KillstealManager.AddToMenu(SFXMenu.AddSubMenu(new Menu("Killsteal", SFXMenu.Name + ".killsteal")));
-                ItemManager.AddToMenu(SFXMenu.AddSubMenu(new Menu("Items", SFXMenu.Name + ".items")), ItemFlags);
+
+                var itemMenu = SFXMenu.AddSubMenu(new Menu("Items", SFXMenu.Name + ".items"));
+                TearStackManager.AddToMenu(
+                    itemMenu.AddSubMenu(new Menu("Tear Stacking", SFXMenu.Name + ".tear-stack." + Player.ChampionName)),
+                    Spells);
+                ItemManager.AddToMenu(itemMenu, ItemFlags);
                 SummonerManager.AddToMenu(SFXMenu.AddSubMenu(new Menu("Summoners", SFXMenu.Name + ".summoners")));
 
                 InfoMenu.AddToMenu(SFXMenu.AddSubMenu(new Menu("Info", SFXMenu.Name + ".info")));

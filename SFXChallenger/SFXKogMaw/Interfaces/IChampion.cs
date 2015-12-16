@@ -24,14 +24,14 @@
 
 using System.Collections.Generic;
 using LeagueSharp.Common;
-using Orbwalking = SFXKogMaw.Wrappers.Orbwalking;
+using Orbwalking = SFXKogMaw.SFXTargetSelector.Orbwalking;
 using Spell = SFXKogMaw.Wrappers.Spell;
 
 #endregion
 
 namespace SFXKogMaw.Interfaces
 {
-    internal interface IChampion
+    public interface IChampion
     {
         Menu SFXMenu { get; }
         Menu Menu { get; }

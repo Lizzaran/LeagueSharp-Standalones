@@ -79,7 +79,7 @@ namespace SFXPotion.Features.Activators
             base.OnDisable();
         }
 
-        protected override sealed void OnLoad()
+        protected sealed override void OnLoad()
         {
             try
             {
@@ -181,7 +181,7 @@ namespace SFXPotion.Features.Activators
         {
             Health,
             Mana
-        };
+        }
 
         private struct PotionStruct
         {

@@ -24,88 +24,99 @@
 
 using System;
 using System.Collections.Generic;
+using System.Collections.ObjectModel;
 using System.Linq;
 using LeagueSharp;
-using SFXKalista.Library.Logger;
 
 #endregion
 
 namespace SFXKalista.SFXTargetSelector
 {
-    public static class Aggro
+    public static partial class TargetSelector
     {
-        static Aggro()
+        public static partial class Weights
         {
-            Items = new Dictionary<int, Item>();
-            FadeTime = 10;
-            Obj_AI_Base.OnAggro += OnObjAiBaseAggro;
-        }
-
-        public static Dictionary<int, Item> Items { get; private set; }
-        public static float FadeTime { get; set; }
-
-        public static Item GetSenderTargetEntry(Obj_AI_Base sender, Obj_AI_Base target)
-        {
-            return GetSenderEntries(sender)
-                .FirstOrDefault(entry => entry.Target.Hero.NetworkId.Equals(target.NetworkId));
-        }
-
-        public static IEnumerable<Item> GetSenderEntries(Obj_AI_Base sender)
-        {
-            return Items.Where(i => i.Key.Equals(sender.NetworkId)).Select(i => i.Value);
-        }
-
-        public static IEnumerable<Item> GetTargetEntries(Obj_AI_Base target)
-        {
-            return Items.Where(i => i.Value.Target.Hero.NetworkId.Equals(target.NetworkId)).Select(i => i.Value);
-        }
-
-        private static void OnObjAiBaseAggro(Obj_AI_Base sender, GameObjectAggroEventArgs args)
-        {
-            try
+            public static class Aggro
             {
-                if (!sender.IsEnemy || TargetSelector.Mode != TargetSelector.TargetingMode.Weights)
+                private static float _fadeTime = 10;
+                private static readonly Dictionary<int, Item> PItems;
+
+                static Aggro()
                 {
-                    return;
+                    PItems = new Dictionary<int, Item>();
+                    Obj_AI_Base.OnAggro += OnObjAiBaseAggro;
                 }
-                var hero = sender as Obj_AI_Hero;
-                var target = Targets.Items.FirstOrDefault(h => h.Hero.NetworkId == args.NetworkId);
-                if (hero != null && target != null)
+
+                public static ReadOnlyDictionary<int, Item> Items
                 {
-                    Item aggro;
-                    if (Items.TryGetValue(hero.NetworkId, out aggro))
+                    get { return new ReadOnlyDictionary<int, Item>(PItems); }
+                }
+
+                public static float FadeTime
+                {
+                    get { return _fadeTime; }
+                    set { _fadeTime = value; }
+                }
+
+                public static Item GetSenderTargetItem(Obj_AI_Base sender, Obj_AI_Base target)
+                {
+                    return
+                        GetSenderItems(sender)
+                            .FirstOrDefault(entry => entry.Target.Hero.NetworkId.Equals(target.NetworkId));
+                }
+
+                public static IEnumerable<Item> GetSenderItems(Obj_AI_Base sender)
+                {
+                    return PItems.Where(i => i.Key.Equals(sender.NetworkId)).Select(i => i.Value);
+                }
+
+                public static IEnumerable<Item> GetTargetItems(Obj_AI_Base target)
+                {
+                    return PItems.Where(i => i.Value.Target.Hero.NetworkId.Equals(target.NetworkId))
+                        .Select(i => i.Value);
+                }
+
+                private static void OnObjAiBaseAggro(Obj_AI_Base sender, GameObjectAggroEventArgs args)
+                {
+                    if (!sender.IsEnemy || Modes.Current.Mode != Mode.Weights)
                     {
-                        aggro.Target = target;
+                        return;
                     }
-                    else
+                    var hero = sender as Obj_AI_Hero;
+                    var target = Targets.Items.FirstOrDefault(h => h.Hero.NetworkId == args.NetworkId);
+                    if (hero != null && target != null)
                     {
-                        Items[target.Hero.NetworkId] = new Item(hero, target);
+                        Item aggro;
+                        if (PItems.TryGetValue(hero.NetworkId, out aggro))
+                        {
+                            aggro.Target = target;
+                        }
+                        else
+                        {
+                            PItems[target.Hero.NetworkId] = new Item(hero, target);
+                        }
                     }
                 }
-            }
-            catch (Exception ex)
-            {
-                Global.Logger.AddItem(new LogItem(ex));
-            }
-        }
 
-        public class Item
-        {
-            public Item(Obj_AI_Hero sender, Targets.Item target)
-            {
-                Sender = sender;
-                Target = target;
-                Timestamp = Game.Time;
-            }
+                public class Item
+                {
+                    public Item(Obj_AI_Hero sender, Targets.Item target)
+                    {
+                        Sender = sender;
+                        Target = target;
+                        Timestamp = Game.Time;
+                    }
 
-            public float Value
-            {
-                get { return Math.Max(0f, FadeTime - (Game.Time - Timestamp)); }
-            }
+                    public float Value
+                    {
+                        get { return Math.Max(0f, FadeTime - (Game.Time - Timestamp)); }
+                    }
 
-            public Obj_AI_Hero Sender { get; set; }
-            public Targets.Item Target { get; set; }
-            public float Timestamp { get; private set; }
+                    public Obj_AI_Hero Sender { get; set; }
+                    public Targets.Item Target { get; set; }
+                    public float Timestamp { get; private set; }
+                }
+            }
         }
     }
 }

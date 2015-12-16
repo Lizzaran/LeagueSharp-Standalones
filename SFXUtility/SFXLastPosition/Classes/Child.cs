@@ -94,6 +94,7 @@ namespace SFXLastPosition.Classes
                 {
                     OnEnable();
                 }
+
                 Handled = true;
             }
             catch (Exception ex)

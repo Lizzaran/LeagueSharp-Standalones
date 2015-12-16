@@ -27,7 +27,7 @@ using LeagueSharp;
 using LeagueSharp.Common;
 using SFXKogMaw.Interfaces;
 using SFXKogMaw.Library.Logger;
-using Orbwalking = SFXKogMaw.Wrappers.Orbwalking;
+using Orbwalking = SFXKogMaw.SFXTargetSelector.Orbwalking;
 
 #endregion
 

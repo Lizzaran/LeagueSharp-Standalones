@@ -34,7 +34,7 @@ using SFXKogMaw.Library.Logger;
 
 namespace SFXKogMaw.Managers
 {
-    internal class SpellBlockManager
+    public class SpellBlockManager
     {
         private static Menu _menu;
         private static readonly HashSet<BlockedSpell> BlockedSpells;

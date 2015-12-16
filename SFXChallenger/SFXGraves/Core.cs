@@ -27,7 +27,7 @@ using LeagueSharp;
 using LeagueSharp.Common;
 using SFXGraves.Interfaces;
 using SFXGraves.Library.Logger;
-using Orbwalking = SFXGraves.Wrappers.Orbwalking;
+using Orbwalking = SFXGraves.SFXTargetSelector.Orbwalking;
 
 #endregion
 

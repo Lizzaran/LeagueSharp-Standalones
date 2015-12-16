@@ -36,12 +36,11 @@ using SFXViktor.Library.Extensions.NET;
 using SFXViktor.Library.Logger;
 using SFXViktor.Managers;
 using SharpDX;
-using DamageType = SFXViktor.Enumerations.DamageType;
 using MinionManager = SFXViktor.Library.MinionManager;
 using MinionOrderTypes = SFXViktor.Library.MinionOrderTypes;
 using MinionTeam = SFXViktor.Library.MinionTeam;
 using MinionTypes = SFXViktor.Library.MinionTypes;
-using Orbwalking = SFXViktor.Wrappers.Orbwalking;
+using Orbwalking = SFXViktor.SFXTargetSelector.Orbwalking;
 using Spell = SFXViktor.Wrappers.Spell;
 using TargetSelector = SFXViktor.SFXTargetSelector.TargetSelector;
 
@@ -145,32 +144,54 @@ namespace SFXViktor.Champions
             harassMenu.AddItem(new MenuItem(harassMenu.Name + ".q", "Use Q").SetValue(false));
             harassMenu.AddItem(new MenuItem(harassMenu.Name + ".e", "Use E").SetValue(true));
 
-            var laneclearMenu = Menu.AddSubMenu(new Menu("Lane Clear", Menu.Name + ".lane-clear"));
+            var laneClearMenu = Menu.AddSubMenu(new Menu("Lane Clear", Menu.Name + ".lane-clear"));
             ResourceManager.AddToMenu(
-                laneclearMenu,
+                laneClearMenu,
                 new ResourceManagerArgs(
                     "lane-clear-q", ResourceType.Mana, ResourceValueType.Percent, ResourceCheckType.Minimum)
                 {
                     Prefix = "Q",
                     Advanced = true,
                     LevelRanges = new SortedList<int, int> { { 1, 6 }, { 6, 12 }, { 12, 18 } },
-                    DefaultValues = new List<int> { 80, 50, 50 },
-                    IgnoreJungleOption = true
+                    DefaultValues = new List<int> { 80, 50, 50 }
                 });
             ResourceManager.AddToMenu(
-                laneclearMenu,
+                laneClearMenu,
                 new ResourceManagerArgs(
                     "lane-clear-e", ResourceType.Mana, ResourceValueType.Percent, ResourceCheckType.Minimum)
                 {
                     Prefix = "E",
                     Advanced = true,
                     LevelRanges = new SortedList<int, int> { { 1, 6 }, { 6, 12 }, { 12, 18 } },
-                    DefaultValues = new List<int> { 40, 20, 20 },
-                    IgnoreJungleOption = true
+                    DefaultValues = new List<int> { 40, 20, 20 }
                 });
-            laneclearMenu.AddItem(new MenuItem(laneclearMenu.Name + ".q", "Use Q").SetValue(false));
-            laneclearMenu.AddItem(new MenuItem(laneclearMenu.Name + ".e", "Use E").SetValue(true));
-            laneclearMenu.AddItem(new MenuItem(laneclearMenu.Name + ".e-min", "E Min.").SetValue(new Slider(2, 1, 5)));
+            laneClearMenu.AddItem(new MenuItem(laneClearMenu.Name + ".q", "Use Q").SetValue(false));
+            laneClearMenu.AddItem(new MenuItem(laneClearMenu.Name + ".e", "Use E").SetValue(true));
+            laneClearMenu.AddItem(new MenuItem(laneClearMenu.Name + ".e-min", "E Min.").SetValue(new Slider(2, 1, 5)));
+
+            var jungleClearMenu = Menu.AddSubMenu(new Menu("Jungle Clear", Menu.Name + ".jungle-clear"));
+            ResourceManager.AddToMenu(
+                jungleClearMenu,
+                new ResourceManagerArgs(
+                    "jungle-clear-q", ResourceType.Mana, ResourceValueType.Percent, ResourceCheckType.Minimum)
+                {
+                    Prefix = "Q",
+                    Advanced = true,
+                    LevelRanges = new SortedList<int, int> { { 1, 6 }, { 6, 12 }, { 12, 18 } },
+                    DefaultValues = new List<int> { 60, 30, 30 }
+                });
+            ResourceManager.AddToMenu(
+                jungleClearMenu,
+                new ResourceManagerArgs(
+                    "jungle-clear-e", ResourceType.Mana, ResourceValueType.Percent, ResourceCheckType.Minimum)
+                {
+                    Prefix = "E",
+                    Advanced = true,
+                    LevelRanges = new SortedList<int, int> { { 1, 6 }, { 6, 12 }, { 12, 18 } },
+                    DefaultValues = new List<int> { 20, 0, 0 }
+                });
+            jungleClearMenu.AddItem(new MenuItem(jungleClearMenu.Name + ".q", "Use Q").SetValue(true));
+            jungleClearMenu.AddItem(new MenuItem(jungleClearMenu.Name + ".e", "Use E").SetValue(true));
 
             var lasthitMenu = Menu.AddSubMenu(new Menu("Last Hit", Menu.Name + ".lasthit"));
             ResourceManager.AddToMenu(
@@ -436,7 +457,7 @@ namespace SFXViktor.Champions
                 }
                 else
                 {
-                    if ((args.Target is Obj_AI_Hero) &&
+                    if (args.Target is Obj_AI_Hero &&
                         (Orbwalker.ActiveMode == Orbwalking.OrbwalkingMode.Combo ||
                          Orbwalker.ActiveMode == Orbwalking.OrbwalkingMode.Mixed) &&
                         (Q.IsReady() && Player.Mana >= Q.Instance.ManaCost ||
@@ -619,7 +640,7 @@ namespace SFXViktor.Champions
             var rTarget = TargetSelector.GetTarget(R);
             if (r)
             {
-                if (rTarget != null && (HasQBuff() || (qCasted || !q || !Q.IsReady()) || R.IsKillable(rTarget)))
+                if (rTarget != null && (HasQBuff() || qCasted || !q || !Q.IsReady() || R.IsKillable(rTarget)))
                 {
                     if (!RLogic(UltimateModeType.Combo, rTarget))
                     {
@@ -738,7 +759,7 @@ namespace SFXViktor.Champions
                             stacks = 13;
                         }
 
-                        damage += (R.GetDamage(target, 1) * stacks);
+                        damage += R.GetDamage(target, 1) * stacks;
                     }
                 }
                 if (e && E.IsReady() && (!rangeCheck || E.IsInRange(target, E.Range + ELength)))
@@ -787,9 +808,8 @@ namespace SFXViktor.Champions
                     (float)
                         Player.CalcDamage(
                             target, Damage.DamageType.Magical,
-                            (new[] { 20, 25, 30, 35, 40, 45, 50, 55, 60, 70, 80, 90, 110, 130, 150, 170, 190, 210 }[
-                                Player.Level - 1] + Player.TotalMagicalDamage * 0.5f + Player.TotalAttackDamage)) *
-                    0.98f;
+                            new[] { 20, 25, 30, 35, 40, 45, 50, 55, 60, 70, 80, 90, 110, 130, 150, 170, 190, 210 }[
+                                Player.Level - 1] + Player.TotalMagicalDamage * 0.5f + Player.TotalAttackDamage) * 0.98f;
             }
             catch (Exception ex)
             {
@@ -957,7 +977,7 @@ namespace SFXViktor.Champions
                             input.From = cCastPos;
                             input.RangeCheckFrom = cCastPos;
                             var pred = Prediction.GetPrediction(input);
-                            if (pred.Hitchance >= (hitChance - 1))
+                            if (pred.Hitchance >= hitChance - 1)
                             {
                                 count++;
                                 if (!containsTarget)
@@ -977,9 +997,9 @@ namespace SFXViktor.Champions
                                     if (
                                         new Geometry.Polygon.Circle(
                                             cPredPos,
-                                            (c.Type == GameObjectType.obj_AI_Minion && c.IsMoving
-                                                ? (c.BoundingRadius / 2f)
-                                                : (c.BoundingRadius) * 0.9f)).Points.Any(p => rect.IsInside(p)))
+                                            c.Type == GameObjectType.obj_AI_Minion && c.IsMoving
+                                                ? c.BoundingRadius / 2f
+                                                : c.BoundingRadius * 0.9f).Points.Any(p => rect.IsInside(p)))
                                     {
                                         count++;
                                         if (!containsTarget && c.NetworkId == mainTarget.NetworkId)
@@ -1003,7 +1023,7 @@ namespace SFXViktor.Champions
                         if (endPos.Equals(Vector3.Zero) && containsTarget)
                         {
                             startPos = target.IsFacing(Player) && IsSpellUpgraded(E)
-                                ? Player.Position.Extend(cCastPos, Player.Distance(cCastPos) - (ELength / 10f))
+                                ? Player.Position.Extend(cCastPos, Player.Distance(cCastPos) - ELength / 10f)
                                 : cCastPos;
                             endPos = Player.Position.Extend(cCastPos, ELength);
                             hits = 1;
@@ -1040,9 +1060,9 @@ namespace SFXViktor.Champions
                                     if (
                                         new Geometry.Polygon.Circle(
                                             cPredPos,
-                                            (c.Type == GameObjectType.obj_AI_Minion && c.IsMoving
-                                                ? (c.BoundingRadius / 2f)
-                                                : (c.BoundingRadius) * 0.9f)).Points.Any(p => rect.IsInside(p)))
+                                            c.Type == GameObjectType.obj_AI_Minion && c.IsMoving
+                                                ? c.BoundingRadius / 2f
+                                                : c.BoundingRadius * 0.9f).Points.Any(p => rect.IsInside(p)))
                                     {
                                         count++;
                                         if (!containsTarget && c.NetworkId == mainTarget.NetworkId)
@@ -1319,16 +1339,15 @@ namespace SFXViktor.Champions
 
         protected override void JungleClear()
         {
-            var useE = Menu.Item(Menu.Name + ".lane-clear.e").GetValue<bool>() && E.IsReady() &&
-                       (ResourceManager.Check("lane-clear-e") || ResourceManager.IgnoreJungle("lane-clear-e"));
-            var useQ = Menu.Item(Menu.Name + ".lane-clear.q").GetValue<bool>() && Q.IsReady() &&
-                       (ResourceManager.Check("lane-clear-q") || ResourceManager.IgnoreJungle("lane-clear-q"));
+            var useE = Menu.Item(Menu.Name + ".jungle-clear.e").GetValue<bool>() && E.IsReady() &&
+                       ResourceManager.Check("jungle-clear-e");
+            var useQ = Menu.Item(Menu.Name + ".jungle-clear.q").GetValue<bool>() && Q.IsReady() &&
+                       ResourceManager.Check("jungle-clear-q");
 
             if (useE)
             {
                 var minions = MinionManager.GetMinions(
-                    (E.Range + ELength + E.Width) * 1.2f, MinionTypes.All, MinionTeam.Neutral,
-                    MinionOrderTypes.MaxHealth);
+                    E.Range + ELength + E.Width, MinionTypes.All, MinionTeam.Neutral, MinionOrderTypes.MaxHealth);
                 if (minions.Count >= 1)
                 {
                     ELogic(null, minions, HitChance.High, 1);

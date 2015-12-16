@@ -34,7 +34,7 @@ using TargetSelector = SFXCassiopeia.SFXTargetSelector.TargetSelector;
 
 namespace SFXCassiopeia.Managers
 {
-    internal class BestTargetOnlyManager
+    public class BestTargetOnlyManager
     {
         private static readonly Dictionary<string, Menu> Menues = new Dictionary<string, Menu>();
 

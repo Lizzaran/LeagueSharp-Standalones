@@ -27,7 +27,7 @@ using LeagueSharp;
 using LeagueSharp.Common;
 using SFXOrianna.Interfaces;
 using SFXOrianna.Library.Logger;
-using Orbwalking = SFXOrianna.Wrappers.Orbwalking;
+using Orbwalking = SFXOrianna.SFXTargetSelector.Orbwalking;
 
 #endregion
 

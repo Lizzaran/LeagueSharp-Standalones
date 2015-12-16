@@ -26,15 +26,15 @@ using System;
 using System.Linq;
 using LeagueSharp;
 using LeagueSharp.Common;
-using SFXCassiopeia.Helpers;
 using SFXCassiopeia.Library;
 using SFXCassiopeia.Library.Logger;
+using SFXCassiopeia.SFXTargetSelector.Others;
 
 #endregion
 
 namespace SFXCassiopeia.Managers
 {
-    internal class KillstealManager
+    public class KillstealManager
     {
         private static Menu _menu;
         public static float MaxRange { get; set; }
@@ -83,12 +83,12 @@ namespace SFXCassiopeia.Managers
                         ItemManager.UseComboItems(enemy, true);
                         return;
                     }
-                    if (summoners && summonerDamage > (enemy.Health + enemy.HPRegenRate * 3))
+                    if (summoners && summonerDamage > enemy.Health + enemy.HPRegenRate * 3)
                     {
                         SummonerManager.UseComboSummoners(enemy);
                         return;
                     }
-                    if (items && summoners && (summonerDamage + itemDamage) > (enemy.Health + enemy.HPRegenRate * 3))
+                    if (items && summoners && summonerDamage + itemDamage > enemy.Health + enemy.HPRegenRate * 3)
                     {
                         ItemManager.UseComboItems(enemy, true);
                         SummonerManager.UseComboSummoners(enemy);

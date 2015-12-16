@@ -50,6 +50,11 @@ namespace SFXRelic.Features.Timers
             OnLoad();
         }
 
+        protected override List<Utility.Map.MapType> BlacklistedMaps
+        {
+            get { return new List<Utility.Map.MapType> { Utility.Map.MapType.SummonersRift }; }
+        }
+
         public override string Name
         {
             get { return "Relic"; }
@@ -171,7 +176,7 @@ namespace SFXRelic.Features.Timers
             }
         }
 
-        protected override sealed void OnLoad()
+        protected sealed override void OnLoad()
         {
             try
             {

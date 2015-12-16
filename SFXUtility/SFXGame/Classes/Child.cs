@@ -94,6 +94,7 @@ namespace SFXGame.Classes
                 {
                     OnEnable();
                 }
+
                 Handled = true;
             }
             catch (Exception ex)

@@ -37,7 +37,7 @@ using Utils = SFXVladimir.Helpers.Utils;
 
 namespace SFXVladimir.Managers
 {
-    internal class DrawingManager
+    public class DrawingManager
     {
         private static IChampion _champion;
         private static bool _separator;

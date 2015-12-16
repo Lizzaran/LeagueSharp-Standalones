@@ -64,7 +64,7 @@ namespace SFXGame.Features.Events
             base.OnDisable();
         }
 
-        protected override sealed void OnLoad()
+        protected sealed override void OnLoad()
         {
             try
             {

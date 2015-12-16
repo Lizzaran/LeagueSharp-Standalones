@@ -26,15 +26,15 @@ using System;
 using System.Linq;
 using LeagueSharp;
 using LeagueSharp.Common;
-using SFXGraves.Helpers;
 using SFXGraves.Library;
 using SFXGraves.Library.Logger;
+using SFXGraves.SFXTargetSelector.Others;
 
 #endregion
 
 namespace SFXGraves.Managers
 {
-    internal class KillstealManager
+    public class KillstealManager
     {
         private static Menu _menu;
         public static float MaxRange { get; set; }
@@ -83,12 +83,12 @@ namespace SFXGraves.Managers
                         ItemManager.UseComboItems(enemy, true);
                         return;
                     }
-                    if (summoners && summonerDamage > (enemy.Health + enemy.HPRegenRate * 3))
+                    if (summoners && summonerDamage > enemy.Health + enemy.HPRegenRate * 3)
                     {
                         SummonerManager.UseComboSummoners(enemy);
                         return;
                     }
-                    if (items && summoners && (summonerDamage + itemDamage) > (enemy.Health + enemy.HPRegenRate * 3))
+                    if (items && summoners && summonerDamage + itemDamage > enemy.Health + enemy.HPRegenRate * 3)
                     {
                         ItemManager.UseComboItems(enemy, true);
                         SummonerManager.UseComboSummoners(enemy);

@@ -23,6 +23,8 @@
 #region
 
 using System;
+using System.Collections.Generic;
+using System.Linq;
 using LeagueSharp.Common;
 using SFXHumanize.Library.Extensions.NET;
 using SFXHumanize.Library.Logger;
@@ -43,6 +45,12 @@ namespace SFXHumanize.Classes
         public bool Initialized { get; protected set; }
         public bool Unloaded { get; protected set; }
         public Menu Menu { get; set; }
+
+        protected virtual List<Utility.Map.MapType> BlacklistedMaps
+        {
+            get { return new List<Utility.Map.MapType>(); }
+        }
+
         public event EventHandler OnInitialized;
         public event EventHandler OnEnabled;
         public event EventHandler OnDisabled;
@@ -78,6 +86,11 @@ namespace SFXHumanize.Classes
                 {
                     Initialized = true;
                     OnInitialized.RaiseEvent(this, null);
+                    var map = Utility.Map.GetMap().Type;
+                    if (BlacklistedMaps.Any(m => m.Equals(map)))
+                    {
+                        OnUnload(null, new UnloadEventArgs(true));
+                    }
                 }
             }
             catch (Exception ex)

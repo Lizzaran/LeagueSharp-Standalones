@@ -33,7 +33,7 @@ using System.Runtime.InteropServices;
 
 [assembly: AssemblyTitle("SFXPerfectWard")]
 [assembly: AssemblyDescription("")]
-[assembly: AssemblyConfiguration(("Release"))]
+[assembly: AssemblyConfiguration("Release")]
 [assembly: AssemblyCompany("Sentryfox")]
 [assembly: AssemblyProduct("SFXPerfectWard")]
 [assembly: AssemblyCopyright("Copyright © 2014 - 2015")]
@@ -61,6 +61,6 @@ using System.Runtime.InteropServices;
 // by using the '*' as shown below:
 // [assembly: AssemblyVersion("1.0.*")]
 
-[assembly: AssemblyVersion("0.9.0.2")]
-[assembly: AssemblyFileVersion("0.9.0.2")]
-[assembly: AssemblyInformationalVersion("0.9.0.2")]
+[assembly: AssemblyVersion("0.9.0.10")]
+[assembly: AssemblyFileVersion("0.9.0.10")]
+[assembly: AssemblyInformationalVersion("0.9.0.10")]

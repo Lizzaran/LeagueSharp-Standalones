@@ -46,6 +46,11 @@ namespace SFXTrinket.Features.Events
             OnLoad();
         }
 
+        protected override List<Utility.Map.MapType> BlacklistedMaps
+        {
+            get { return new List<Utility.Map.MapType> { Utility.Map.MapType.CrystalScar }; }
+        }
+
         public override string Name
         {
             get { return "Trinket"; }
@@ -63,7 +68,7 @@ namespace SFXTrinket.Features.Events
             base.OnDisable();
         }
 
-        protected override sealed void OnLoad()
+        protected sealed override void OnLoad()
         {
             try
             {

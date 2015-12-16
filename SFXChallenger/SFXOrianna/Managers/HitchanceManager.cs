@@ -33,7 +33,7 @@ using Spell = SFXOrianna.Wrappers.Spell;
 
 namespace SFXOrianna.Managers
 {
-    internal static class HitchanceManager
+    public static class HitchanceManager
     {
         private const int MinHitChance = 3;
         private static readonly Dictionary<string, Menu> Menues = new Dictionary<string, Menu>();

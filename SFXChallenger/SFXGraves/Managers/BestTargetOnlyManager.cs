@@ -34,7 +34,7 @@ using TargetSelector = SFXGraves.SFXTargetSelector.TargetSelector;
 
 namespace SFXGraves.Managers
 {
-    internal class BestTargetOnlyManager
+    public class BestTargetOnlyManager
     {
         private static readonly Dictionary<string, Menu> Menues = new Dictionary<string, Menu>();
 

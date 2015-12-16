@@ -26,7 +26,6 @@ using System;
 using LeagueSharp;
 using LeagueSharp.Common;
 using SFXSivir.Library.Logger;
-using DamageType = SFXSivir.Enumerations.DamageType;
 
 #endregion
 
@@ -84,10 +83,10 @@ namespace SFXSivir.Wrappers
                 if (target is Obj_AI_Hero && target.IsMoving)
                 {
                     var predTarget = Prediction.GetPrediction(
-                        target, Delay + (From.Distance(target.ServerPosition) / Speed) + (Game.Ping / 2000f) + 0.1f);
-                    return Delay + (From.Distance(predTarget.UnitPosition) / Speed) + (Game.Ping / 2000f) + 0.1f;
+                        target, Delay + From.Distance(target.ServerPosition) / Speed + Game.Ping / 2000f + 0.1f);
+                    return Delay + From.Distance(predTarget.UnitPosition) / Speed + Game.Ping / 2000f + 0.1f;
                 }
-                return Delay + (From.Distance(target.ServerPosition) / Speed) + (Game.Ping / 2000f) + 0.1f;
+                return Delay + From.Distance(target.ServerPosition) / Speed + Game.Ping / 2000f + 0.1f;
             }
             catch (Exception ex)
             {

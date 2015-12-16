@@ -35,7 +35,7 @@ using SharpDX;
 
 namespace SFXKogMaw.Managers
 {
-    internal class SummonerSpell
+    public class SummonerSpell
     {
         private SpellSlot? _slot;
         public string Name { get; set; }
@@ -48,7 +48,7 @@ namespace SFXKogMaw.Managers
         }
     }
 
-    internal static class SummonerManager
+    public static class SummonerManager
     {
         private static Menu _menu;
         public static SummonerSpell BlueSmite;
@@ -119,8 +119,8 @@ namespace SFXKogMaw.Managers
 
         public static bool IsReady(this SummonerSpell spell, Obj_AI_Hero sender = null)
         {
-            return (spell.GetSlot(sender ?? ObjectManager.Player) != SpellSlot.Unknown &&
-                    spell.GetSlot(sender ?? ObjectManager.Player).IsReady());
+            return spell.GetSlot(sender ?? ObjectManager.Player) != SpellSlot.Unknown &&
+                   spell.GetSlot(sender ?? ObjectManager.Player).IsReady();
         }
 
         public static List<SummonerSpell> AvailableSummoners()
@@ -135,25 +135,32 @@ namespace SFXKogMaw.Managers
 
         public static SpellDataInst GetSpell(this SummonerSpell spell, Obj_AI_Hero sender = null)
         {
-            var slot = spell.GetSlot((sender ?? ObjectManager.Player));
+            var slot = spell.GetSlot(sender ?? ObjectManager.Player);
             return slot == SpellSlot.Unknown ? null : (sender ?? ObjectManager.Player).Spellbook.GetSpell(slot);
         }
 
-        public static void Cast(this SummonerSpell spell, Obj_AI_Hero sender = null)
+        public static void Cast(this SummonerSpell spell, Obj_AI_Hero target)
         {
-            (sender ?? ObjectManager.Player).Spellbook.CastSpell(spell.GetSlot(sender ?? ObjectManager.Player));
+            ObjectManager.Player.Spellbook.CastSpell(spell.GetSlot(ObjectManager.Player), target);
         }
 
         // ReSharper disable once MethodOverloadWithOptionalParameter
         public static void Cast(this SummonerSpell spell, Obj_AI_Hero target, Obj_AI_Hero sender = null)
         {
-            (sender ?? ObjectManager.Player).Spellbook.CastSpell(spell.GetSlot(sender ?? ObjectManager.Player), target);
+            if (sender == null)
+            {
+                sender = ObjectManager.Player;
+            }
+            sender.Spellbook.CastSpell(spell.GetSlot(sender), target);
         }
 
         public static void Cast(this SummonerSpell spell, Vector3 position, Obj_AI_Hero sender = null)
         {
-            (sender ?? ObjectManager.Player).Spellbook.CastSpell(
-                spell.GetSlot(sender ?? ObjectManager.Player), position);
+            if (sender == null)
+            {
+                sender = ObjectManager.Player;
+            }
+            sender.Spellbook.CastSpell(spell.GetSlot(sender), position);
         }
 
         public static float CalculateBlueSmiteDamage()
@@ -257,11 +264,11 @@ namespace SFXKogMaw.Managers
                 }
                 if (smite)
                 {
-                    if (distance <= Math.Pow(BlueSmite.Range, 2))
+                    if (BlueSmite.Exists() && distance <= Math.Pow(BlueSmite.Range, 2))
                     {
                         BlueSmite.Cast(target);
                     }
-                    else if (distance <= Math.Pow(RedSmite.Range, 2))
+                    else if (RedSmite.Exists() && distance <= Math.Pow(RedSmite.Range, 2))
                     {
                         RedSmite.Cast(target);
                     }

@@ -24,14 +24,14 @@
 
 using System.Collections.Generic;
 using LeagueSharp.Common;
-using Orbwalking = SFXCassiopeia.Wrappers.Orbwalking;
+using Orbwalking = SFXCassiopeia.SFXTargetSelector.Orbwalking;
 using Spell = SFXCassiopeia.Wrappers.Spell;
 
 #endregion
 
 namespace SFXCassiopeia.Interfaces
 {
-    internal interface IChampion
+    public interface IChampion
     {
         Menu SFXMenu { get; }
         Menu Menu { get; }

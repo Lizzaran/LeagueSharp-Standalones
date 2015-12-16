@@ -31,7 +31,7 @@ using SFXVarus.Helpers;
 using SFXVarus.Interfaces;
 using SFXVarus.Library;
 using SFXVarus.Library.Logger;
-using SFXVarus.SFXTargetSelector;
+using TargetSelector = SFXVarus.SFXTargetSelector.TargetSelector;
 
 #endregion
 
@@ -69,14 +69,15 @@ namespace SFXVarus
                     try
                     {
                         _champion = LoadChampion();
-
                         if (_champion != null)
                         {
                             Global.Champion = _champion;
                             if (Global.Reset.Enabled)
                             {
-                                Reset.Force(Global.Name, Global.Reset.MaxAge, Weights.RestoreDefaultWeights);
+                                Reset.Force(
+                                    Global.Name, Global.Reset.MaxAge, TargetSelector.Weights.RestoreDefaultWeights);
                             }
+                            Utility.DelayAction.Add(1000, () => Conflicts.Check(ObjectManager.Player.ChampionName));
                             Update.Check(
                                 Global.Name, Assembly.GetExecutingAssembly().GetName().Version, Global.UpdatePath, 10000);
                             Core.Init(_champion, 50);
@@ -99,14 +100,27 @@ namespace SFXVarus
         {
             try
             {
-                var type =
+                var types =
                     Assembly.GetAssembly(typeof(IChampion))
                         .GetTypes()
                         .Where(t => t.IsClass && !t.IsAbstract && typeof(IChampion).IsAssignableFrom(t))
-                        .FirstOrDefault(
+                        .ToList();
+                if (types.Any())
+                {
+                    var type =
+                        types.FirstOrDefault(
                             t => t.Name.Equals(ObjectManager.Player.ChampionName, StringComparison.OrdinalIgnoreCase));
-
-                return type != null ? (IChampion) DynamicInitializer.NewInstance(type) : null;
+                    if (type == null && Global.Testing.Enabled)
+                    {
+                        type =
+                            types.FirstOrDefault(
+                                t =>
+                                    t.Name.Equals(
+                                        string.Format("{0}Testing", ObjectManager.Player.ChampionName),
+                                        StringComparison.OrdinalIgnoreCase));
+                    }
+                    return type != null ? (IChampion) DynamicInitializer.NewInstance(type) : null;
+                }
             }
             catch (Exception ex)
             {

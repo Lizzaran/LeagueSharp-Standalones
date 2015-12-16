@@ -94,6 +94,7 @@ namespace SFXReplay.Classes
                 {
                     OnEnable();
                 }
+
                 Handled = true;
             }
             catch (Exception ex)

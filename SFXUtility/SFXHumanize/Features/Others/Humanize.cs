@@ -65,7 +65,7 @@ namespace SFXHumanize.Features.Others
             base.OnDisable();
         }
 
-        protected override sealed void OnLoad()
+        protected sealed override void OnLoad()
         {
             try
             {

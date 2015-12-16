@@ -27,7 +27,7 @@ using LeagueSharp;
 using LeagueSharp.Common;
 using SFXKalista.Interfaces;
 using SFXKalista.Library.Logger;
-using Orbwalking = SFXKalista.Wrappers.Orbwalking;
+using Orbwalking = SFXKalista.SFXTargetSelector.Orbwalking;
 
 #endregion
 

@@ -34,7 +34,7 @@ using SFXCassiopeia.Library.Logger;
 
 namespace SFXCassiopeia.Managers
 {
-    internal class SpellBlockManager
+    public class SpellBlockManager
     {
         private static Menu _menu;
         private static readonly HashSet<BlockedSpell> BlockedSpells;

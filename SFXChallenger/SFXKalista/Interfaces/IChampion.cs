@@ -24,14 +24,14 @@
 
 using System.Collections.Generic;
 using LeagueSharp.Common;
-using Orbwalking = SFXKalista.Wrappers.Orbwalking;
+using Orbwalking = SFXKalista.SFXTargetSelector.Orbwalking;
 using Spell = SFXKalista.Wrappers.Spell;
 
 #endregion
 
 namespace SFXKalista.Interfaces
 {
-    internal interface IChampion
+    public interface IChampion
     {
         Menu SFXMenu { get; }
         Menu Menu { get; }

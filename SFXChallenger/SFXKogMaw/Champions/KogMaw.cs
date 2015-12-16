@@ -34,12 +34,11 @@ using SFXKogMaw.Helpers;
 using SFXKogMaw.Library;
 using SFXKogMaw.Library.Logger;
 using SFXKogMaw.Managers;
-using DamageType = SFXKogMaw.Enumerations.DamageType;
 using MinionManager = SFXKogMaw.Library.MinionManager;
 using MinionOrderTypes = SFXKogMaw.Library.MinionOrderTypes;
 using MinionTeam = SFXKogMaw.Library.MinionTeam;
 using MinionTypes = SFXKogMaw.Library.MinionTypes;
-using Orbwalking = SFXKogMaw.Wrappers.Orbwalking;
+using Orbwalking = SFXKogMaw.SFXTargetSelector.Orbwalking;
 using Spell = SFXKogMaw.Wrappers.Spell;
 using TargetSelector = SFXKogMaw.SFXTargetSelector.TargetSelector;
 using Utils = SFXKogMaw.Helpers.Utils;
@@ -77,7 +76,7 @@ namespace SFXKogMaw.Champions
             W = new Spell(
                 SpellSlot.W,
                 Player.AttackRange + Player.BoundingRadius +
-                GameObjects.EnemyHeroes.Select(e => e.BoundingRadius).DefaultIfEmpty(50).Average(), DamageType.Magical);
+                GameObjects.EnemyHeroes.Select(e => e.BoundingRadius).DefaultIfEmpty(30).Min(), DamageType.Magical);
 
             E = new Spell(SpellSlot.E, 1200f, DamageType.Magical);
             E.SetSkillshot(0.25f, 120f, 1400f, false, SkillshotType.SkillshotLine);
@@ -133,22 +132,35 @@ namespace SFXKogMaw.Champions
             harassMenu.AddItem(new MenuItem(harassMenu.Name + ".w", "Use W").SetValue(true));
             harassMenu.AddItem(new MenuItem(harassMenu.Name + ".r", "Use R").SetValue(true));
 
-            var laneclearMenu = Menu.AddSubMenu(new Menu("Lane Clear", Menu.Name + ".lane-clear"));
+            var laneClearMenu = Menu.AddSubMenu(new Menu("Lane Clear", Menu.Name + ".lane-clear"));
             ResourceManager.AddToMenu(
-                laneclearMenu,
+                laneClearMenu,
                 new ResourceManagerArgs(
                     "lane-clear", ResourceType.Mana, ResourceValueType.Percent, ResourceCheckType.Minimum)
                 {
                     Advanced = true,
                     LevelRanges = new SortedList<int, int> { { 1, 6 }, { 6, 12 }, { 12, 18 } },
-                    DefaultValues = new List<int> { 50, 30, 30 },
-                    IgnoreJungleOption = true
+                    DefaultValues = new List<int> { 50, 30, 30 }
                 });
-            laneclearMenu.AddItem(new MenuItem(laneclearMenu.Name + ".w", "Use W").SetValue(true));
-            laneclearMenu.AddItem(new MenuItem(laneclearMenu.Name + ".e", "Use E").SetValue(true));
-            laneclearMenu.AddItem(new MenuItem(laneclearMenu.Name + ".e-min", "E Min.").SetValue(new Slider(3, 1, 5)));
-            laneclearMenu.AddItem(new MenuItem(laneclearMenu.Name + ".r", "Use R").SetValue(false));
-            laneclearMenu.AddItem(new MenuItem(laneclearMenu.Name + ".r-min", "R Min.").SetValue(new Slider(3, 1, 5)));
+            laneClearMenu.AddItem(new MenuItem(laneClearMenu.Name + ".w", "Use W").SetValue(true));
+            laneClearMenu.AddItem(new MenuItem(laneClearMenu.Name + ".e", "Use E").SetValue(true));
+            laneClearMenu.AddItem(new MenuItem(laneClearMenu.Name + ".e-min", "E Min.").SetValue(new Slider(3, 1, 5)));
+            laneClearMenu.AddItem(new MenuItem(laneClearMenu.Name + ".r", "Use R").SetValue(false));
+            laneClearMenu.AddItem(new MenuItem(laneClearMenu.Name + ".r-min", "R Min.").SetValue(new Slider(3, 1, 5)));
+
+            var jungleClearMenu = Menu.AddSubMenu(new Menu("Jungle Clear", Menu.Name + ".jungle-clear"));
+            ResourceManager.AddToMenu(
+                jungleClearMenu,
+                new ResourceManagerArgs(
+                    "jungle-clear", ResourceType.Mana, ResourceValueType.Percent, ResourceCheckType.Minimum)
+                {
+                    Advanced = true,
+                    LevelRanges = new SortedList<int, int> { { 1, 6 }, { 6, 12 }, { 12, 18 } },
+                    DefaultValues = new List<int> { 30, 10, 10 }
+                });
+            jungleClearMenu.AddItem(new MenuItem(jungleClearMenu.Name + ".w", "Use W").SetValue(true));
+            jungleClearMenu.AddItem(new MenuItem(jungleClearMenu.Name + ".e", "Use E").SetValue(true));
+            jungleClearMenu.AddItem(new MenuItem(jungleClearMenu.Name + ".r", "Use R").SetValue(false));
 
             var fleeMenu = Menu.AddSubMenu(new Menu("Flee", Menu.Name + ".flee"));
             fleeMenu.AddItem(new MenuItem(fleeMenu.Name + ".e", "Use E").SetValue(true));
@@ -194,6 +206,10 @@ namespace SFXKogMaw.Champions
                 });
             BestTargetOnlyManager.AddToMenu(rGapcloserMenu, "r-gapcloser", true);
 
+            miscMenu.AddItem(
+                new MenuItem(miscMenu.Name + ".spells-atk", "Use Spells if Atk Speed <= x / 100").SetValue(
+                    new Slider(175, 100, 500)));
+
             miscMenu.AddItem(new MenuItem(miscMenu.Name + ".r-max", "R Max. Stacks").SetValue(new Slider(5, 1, 10)));
 
             IndicatorManager.AddToMenu(DrawingManager.Menu, true);
@@ -208,12 +224,15 @@ namespace SFXKogMaw.Champions
         {
             try
             {
-                if (R.IsReady())
+                if (ShouldUseSpells())
                 {
-                    if (args.UniqueId.Equals("r-immobile") && BestTargetOnlyManager.Check("r-immobile", R, args.Hero) &&
-                        R.IsInRange(args.Position))
+                    if (R.IsReady())
                     {
-                        R.Cast(args.Position);
+                        if (args.UniqueId.Equals("r-immobile") &&
+                            BestTargetOnlyManager.Check("r-immobile", R, args.Hero) && R.IsInRange(args.Position))
+                        {
+                            R.Cast(args.Position);
+                        }
                     }
                 }
             }
@@ -227,25 +246,12 @@ namespace SFXKogMaw.Champions
 
         protected override void OnPostUpdate()
         {
-            if (HeroListManager.Enabled("r-immobile") && R.IsReady())
-            {
-                var target =
-                    GameObjects.EnemyHeroes.FirstOrDefault(
-                        t =>
-                            t.IsValidTarget(R.Range) && HeroListManager.Check("r-immobile", t) &&
-                            BestTargetOnlyManager.Check("r-immobile", R, t) && Utils.IsImmobile(t));
-                if (target != null)
-                {
-                    Casting.SkillShot(target, R, HitChance.VeryHigh);
-                }
-            }
-
             if (W.Level > _wLevel)
             {
                 _wLevel = W.Level;
                 W.Range = Player.AttackRange + Player.BoundingRadius +
-                          GameObjects.EnemyHeroes.Select(e => e.BoundingRadius).DefaultIfEmpty(50).Average() +
-                          20f * _wLevel;
+                          GameObjects.EnemyHeroes.Select(e => e.BoundingRadius).DefaultIfEmpty(30).Min() + 60f +
+                          30f * _wLevel;
             }
             if (R.Level > _rLevel)
             {
@@ -258,21 +264,24 @@ namespace SFXKogMaw.Champions
         {
             try
             {
-                if (args.UniqueId.Equals("e-gapcloser") && E.IsReady() &&
-                    BestTargetOnlyManager.Check("e-gapcloser", E, args.Hero))
+                if (ShouldUseSpells())
                 {
-                    if (args.End.Distance(Player.Position) <= E.Range)
+                    if (args.UniqueId.Equals("e-gapcloser") && E.IsReady() &&
+                        BestTargetOnlyManager.Check("e-gapcloser", E, args.Hero))
                     {
-                        E.Cast(args.End);
+                        if (args.End.Distance(Player.Position) <= E.Range)
+                        {
+                            E.Cast(args.End);
+                        }
                     }
-                }
-                if (args.UniqueId.Equals("r-gapcloser") && R.IsReady() &&
-                    BestTargetOnlyManager.Check("r-gapcloser", R, args.Hero) &&
-                    Menu.Item(Menu.Name + ".miscellaneous.r-max").GetValue<Slider>().Value > GetRBuffCount())
-                {
-                    if (args.End.Distance(Player.Position) <= R.Range)
+                    if (args.UniqueId.Equals("r-gapcloser") && R.IsReady() &&
+                        BestTargetOnlyManager.Check("r-gapcloser", R, args.Hero) &&
+                        Menu.Item(Menu.Name + ".miscellaneous.r-max").GetValue<Slider>().Value > GetRBuffCount())
                     {
-                        R.Cast(args.End);
+                        if (args.End.Distance(Player.Position) <= R.Range)
+                        {
+                            R.Cast(args.End);
+                        }
                     }
                 }
             }
@@ -282,17 +291,14 @@ namespace SFXKogMaw.Champions
             }
         }
 
-        private bool ShouldUseR()
+        private bool ShouldUseSpells()
         {
-            var attackSpeed =
-                (~(int) ((1 / ObjectManager.Player.AttackSpeedMod * 100) - (1 / ObjectManager.Player.AttackDelay * 100)) +
-                 1);
-
-            if (attackSpeed > 70 && Player.HasBuff("KogMawBioArcaneBarrage"))
+            var attackSpeed = 1f / ObjectManager.Player.AttackDelay;
+            if (attackSpeed > Menu.Item(Menu.Name + ".miscellaneous.spells-atk").GetValue<Slider>().Value / 100f &&
+                ObjectManager.Player.AbilityPower() < 100)
             {
-                return false;
+                return !GameObjects.EnemyHeroes.Any(Orbwalking.InAutoAttackRange);
             }
-
             return true;
         }
 
@@ -301,7 +307,8 @@ namespace SFXKogMaw.Champions
             try
             {
                 return
-                    Player.Buffs.Count(x => x.Name.Equals("kogmawlivingartillery", StringComparison.OrdinalIgnoreCase));
+                    Player.Buffs.Count(
+                        x => x.Name.Equals("kogmawlivingartillerycost", StringComparison.OrdinalIgnoreCase));
             }
             catch (Exception ex)
             {
@@ -317,27 +324,30 @@ namespace SFXKogMaw.Champions
             var useE = Menu.Item(Menu.Name + ".combo.e").GetValue<bool>() && E.IsReady();
             var useR = Menu.Item(Menu.Name + ".combo.r").GetValue<bool>() && R.IsReady();
 
-            if (useQ)
-            {
-                Casting.SkillShot(Q, Q.GetHitChance("combo"));
-            }
             if (useW)
             {
                 WLogic();
             }
-            if (useE)
+            if (ShouldUseSpells())
             {
-                Casting.SkillShot(E, E.GetHitChance("combo"));
-            }
-            if (useR && ResourceManager.Check("combo-r") &&
-                Menu.Item(Menu.Name + ".miscellaneous.r-max").GetValue<Slider>().Value > GetRBuffCount())
-            {
-                var target = TargetSelector.GetTarget(R);
-                if (target != null &&
-                    Menu.Item(Menu.Name + ".miscellaneous.r-max").GetValue<Slider>().Value > GetRBuffCount() &&
-                    (Player.FlatMagicDamageMod > 50 || ShouldUseR()))
+                if (useQ)
                 {
-                    Casting.SkillShot(R, R.GetHitChance("combo"));
+                    Casting.SkillShot(Q, Q.GetHitChance("combo"));
+                }
+
+                if (useE)
+                {
+                    Casting.SkillShot(E, E.GetHitChance("combo"));
+                }
+                if (useR && ResourceManager.Check("combo-r") &&
+                    Menu.Item(Menu.Name + ".miscellaneous.r-max").GetValue<Slider>().Value > GetRBuffCount())
+                {
+                    var target = TargetSelector.GetTarget(R);
+                    if (target != null &&
+                        Menu.Item(Menu.Name + ".miscellaneous.r-max").GetValue<Slider>().Value > GetRBuffCount())
+                    {
+                        Casting.SkillShot(R, R.GetHitChance("combo"));
+                    }
                 }
             }
         }
@@ -346,7 +356,7 @@ namespace SFXKogMaw.Champions
         {
             try
             {
-                var wRange = Player.AttackRange + Player.BoundingRadius + 60 + 30 * W.Level;
+                var wRange = Player.AttackRange + Player.BoundingRadius + 60 + 25 * W.Level;
                 if (GameObjects.EnemyHeroes.Any(e => e.Distance(Player) < wRange + e.BoundingRadius))
                 {
                     W.Cast();
@@ -364,7 +374,7 @@ namespace SFXKogMaw.Champions
             {
                 var useQ = Menu.Item(Menu.Name + ".harass.q").GetValue<bool>() && Q.IsReady();
                 var useW = Menu.Item(Menu.Name + ".harass.w").GetValue<bool>() && W.IsReady();
-                if (useQ)
+                if (useQ && ShouldUseSpells())
                 {
                     Casting.SkillShot(Q, Q.GetHitChance("harass"));
                 }
@@ -373,13 +383,13 @@ namespace SFXKogMaw.Champions
                     WLogic();
                 }
             }
-            if (ResourceManager.Check("harass-r"))
+            if (ResourceManager.Check("harass-r") && ShouldUseSpells())
             {
                 var useR = Menu.Item(Menu.Name + ".harass.r").GetValue<bool>() && R.IsReady();
                 if (useR && Menu.Item(Menu.Name + ".miscellaneous.r-max").GetValue<Slider>().Value > GetRBuffCount())
                 {
                     var target = TargetSelector.GetTarget(R);
-                    if (target != null && (Player.FlatMagicDamageMod > 50 || ShouldUseR()))
+                    if (target != null && (Player.FlatMagicDamageMod > 50))
                     {
                         Casting.SkillShot(R, R.GetHitChance("harass"));
                     }
@@ -405,30 +415,33 @@ namespace SFXKogMaw.Champions
                     W, MinionManager.GetMinions(W.Range), 1,
                     Player.AttackRange + Player.BoundingRadius * 1.25f + 20 * W.Level);
             }
-            if (useE)
+            if (ShouldUseSpells())
             {
-                Casting.Farm(
-                    E, MinionManager.GetMinions(E.Range),
-                    Menu.Item(Menu.Name + ".lane-clear.e-min").GetValue<Slider>().Value);
-            }
-            if (useR)
-            {
-                Casting.Farm(
-                    R, MinionManager.GetMinions(R.Range),
-                    Menu.Item(Menu.Name + ".lane-clear.r-min").GetValue<Slider>().Value);
+                if (useE)
+                {
+                    Casting.Farm(
+                        E, MinionManager.GetMinions(E.Range),
+                        Menu.Item(Menu.Name + ".lane-clear.e-min").GetValue<Slider>().Value);
+                }
+                if (useR)
+                {
+                    Casting.Farm(
+                        R, MinionManager.GetMinions(R.Range),
+                        Menu.Item(Menu.Name + ".lane-clear.r-min").GetValue<Slider>().Value);
+                }
             }
         }
 
         protected override void JungleClear()
         {
-            if (!ResourceManager.Check("lane-clear") && !ResourceManager.IgnoreJungle("lane-clear"))
+            if (!ResourceManager.Check("jungle-clear"))
             {
                 return;
             }
 
-            var useW = Menu.Item(Menu.Name + ".lane-clear.w").GetValue<bool>() && W.IsReady();
-            var useE = Menu.Item(Menu.Name + ".lane-clear.e").GetValue<bool>() && E.IsReady();
-            var useR = Menu.Item(Menu.Name + ".lane-clear.r").GetValue<bool>() && R.IsReady() &&
+            var useW = Menu.Item(Menu.Name + ".jungle-clear.w").GetValue<bool>() && W.IsReady();
+            var useE = Menu.Item(Menu.Name + ".jungle-clear.e").GetValue<bool>() && E.IsReady();
+            var useR = Menu.Item(Menu.Name + ".jungle-clear.r").GetValue<bool>() && R.IsReady() &&
                        Menu.Item(Menu.Name + ".miscellaneous.r-max").GetValue<Slider>().Value > GetRBuffCount();
 
             if (useW)
@@ -438,19 +451,22 @@ namespace SFXKogMaw.Champions
                     MinionManager.GetMinions(W.Range, MinionTypes.All, MinionTeam.Neutral, MinionOrderTypes.MaxHealth),
                     1, Player.AttackRange + Player.BoundingRadius * 1.25f + 20 * W.Level);
             }
-            if (useE)
+            if (ShouldUseSpells())
             {
-                Casting.Farm(
-                    E,
-                    MinionManager.GetMinions(E.Range, MinionTypes.All, MinionTeam.Neutral, MinionOrderTypes.MaxHealth),
-                    1);
-            }
-            if (useR)
-            {
-                Casting.Farm(
-                    R,
-                    MinionManager.GetMinions(R.Range, MinionTypes.All, MinionTeam.Neutral, MinionOrderTypes.MaxHealth),
-                    1);
+                if (useE)
+                {
+                    Casting.Farm(
+                        E,
+                        MinionManager.GetMinions(
+                            E.Range, MinionTypes.All, MinionTeam.Neutral, MinionOrderTypes.MaxHealth), 1);
+                }
+                if (useR)
+                {
+                    Casting.Farm(
+                        R,
+                        MinionManager.GetMinions(
+                            R.Range, MinionTypes.All, MinionTeam.Neutral, MinionOrderTypes.MaxHealth), 1);
+                }
             }
         }
 

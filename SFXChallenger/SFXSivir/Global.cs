@@ -36,6 +36,7 @@ namespace SFXSivir
     {
         public static string Prefix = "SFX";
         public static string Name = "SFXSivir";
+        public static string DefaultFont = "Calibri";
         public static IChampion Champion;
         public static ILogger Logger;
         public static string BaseDir = AppDomain.CurrentDomain.BaseDirectory;
@@ -61,10 +62,42 @@ namespace SFXSivir
             }
         }
 
+        public class Testing
+        {
+            private static readonly string _file = "sfx.testing";
+            public static bool Enabled;
+
+            static Testing()
+            {
+                try
+                {
+                    var bParent = Directory.GetParent(BaseDir);
+                    if (bParent != null)
+                    {
+                        var bbParent = Directory.GetParent(bParent.FullName);
+                        if (bbParent != null)
+                        {
+                            if (File.Exists(Path.Combine(bbParent.FullName, _file)))
+                            {
+                                Enabled = true;
+                                Console.ForegroundColor = ConsoleColor.Yellow;
+                                Console.WriteLine("{0} - Testing", Name);
+                                Console.ResetColor();
+                            }
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Logger.AddItem(new LogItem(ex));
+                }
+            }
+        }
+
         public class Reset
         {
-            public static bool Enabled = true;
-            public static DateTime MaxAge = new DateTime(2015, 10, 6);
+            public static readonly bool Enabled = false;
+            public static readonly DateTime MaxAge = new DateTime(2015, 10, 6);
         }
     }
 }

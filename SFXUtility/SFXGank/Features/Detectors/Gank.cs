@@ -52,6 +52,18 @@ namespace SFXGank.Features.Detectors
             OnLoad();
         }
 
+        protected override List<Utility.Map.MapType> BlacklistedMaps
+        {
+            get
+            {
+                return new List<Utility.Map.MapType>
+                {
+                    Utility.Map.MapType.CrystalScar,
+                    Utility.Map.MapType.HowlingAbyss
+                };
+            }
+        }
+
         public override string Name
         {
             get { return "Gank"; }
@@ -183,7 +195,7 @@ namespace SFXGank.Features.Detectors
             }
         }
 
-        protected override sealed void OnLoad()
+        protected sealed override void OnLoad()
         {
             try
             {

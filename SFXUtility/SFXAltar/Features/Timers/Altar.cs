@@ -50,6 +50,19 @@ namespace SFXAltar.Features.Timers
             OnLoad();
         }
 
+        protected override List<Utility.Map.MapType> BlacklistedMaps
+        {
+            get
+            {
+                return new List<Utility.Map.MapType>
+                {
+                    Utility.Map.MapType.CrystalScar,
+                    Utility.Map.MapType.HowlingAbyss,
+                    Utility.Map.MapType.SummonersRift
+                };
+            }
+        }
+
         public override string Name
         {
             get { return "Altar"; }
@@ -146,7 +159,7 @@ namespace SFXAltar.Features.Timers
             }
         }
 
-        protected override sealed void OnLoad()
+        protected sealed override void OnLoad()
         {
             try
             {

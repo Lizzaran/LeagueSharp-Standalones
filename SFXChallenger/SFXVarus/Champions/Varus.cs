@@ -34,16 +34,14 @@ using SFXVarus.Helpers;
 using SFXVarus.Library;
 using SFXVarus.Library.Logger;
 using SFXVarus.Managers;
-using SFXVarus.SFXTargetSelector;
 using SharpDX;
 using Collision = LeagueSharp.Common.Collision;
 using Color = System.Drawing.Color;
-using DamageType = SFXVarus.Enumerations.DamageType;
 using MinionManager = SFXVarus.Library.MinionManager;
 using MinionOrderTypes = SFXVarus.Library.MinionOrderTypes;
 using MinionTeam = SFXVarus.Library.MinionTeam;
 using MinionTypes = SFXVarus.Library.MinionTypes;
-using Orbwalking = SFXVarus.Wrappers.Orbwalking;
+using Orbwalking = SFXVarus.SFXTargetSelector.Orbwalking;
 using Spell = SFXVarus.Wrappers.Spell;
 using TargetSelector = SFXVarus.SFXTargetSelector.TargetSelector;
 using Utils = SFXVarus.Helpers.Utils;
@@ -118,7 +116,7 @@ namespace SFXVarus.Champions
                 .ValueChanged +=
                 delegate(object sender, OnValueChangeEventArgs args) { R.Range = args.GetNewValue<Slider>().Value; };
 
-            R.Range = Menu.Item(Menu.Name + ".ultimate.range").GetValue<Slider>().Value;
+            R.Range = Menu.Item(ultimateMenu.Name + ".range").GetValue<Slider>().Value;
 
             ultimateMenu.AddItem(
                 new MenuItem(ultimateMenu.Name + ".radius", "Spread Radius").SetValue(new Slider(450, 100, 600)))
@@ -190,9 +188,9 @@ namespace SFXVarus.Champions
             harassMenu.AddItem(new MenuItem(harassMenu.Name + ".q", "Use Q").SetValue(true));
             harassMenu.AddItem(new MenuItem(harassMenu.Name + ".e", "Use E").SetValue(true));
 
-            var laneclearMenu = Menu.AddSubMenu(new Menu("Lane Clear", Menu.Name + ".lane-clear"));
+            var laneClearMenu = Menu.AddSubMenu(new Menu("Lane Clear", Menu.Name + ".lane-clear"));
             ResourceManager.AddToMenu(
-                laneclearMenu,
+                laneClearMenu,
                 new ResourceManagerArgs(
                     "lane-clear-q", ResourceType.Mana, ResourceValueType.Percent, ResourceCheckType.Minimum)
                 {
@@ -202,7 +200,7 @@ namespace SFXVarus.Champions
                     DefaultValues = new List<int> { 50, 30, 30 }
                 });
             ResourceManager.AddToMenu(
-                laneclearMenu,
+                laneClearMenu,
                 new ResourceManagerArgs(
                     "lane-clear-e", ResourceType.Mana, ResourceValueType.Percent, ResourceCheckType.Minimum)
                 {
@@ -211,9 +209,33 @@ namespace SFXVarus.Champions
                     LevelRanges = new SortedList<int, int> { { 1, 6 }, { 6, 12 }, { 12, 18 } },
                     DefaultValues = new List<int> { 50, 30, 30 }
                 });
-            laneclearMenu.AddItem(new MenuItem(laneclearMenu.Name + ".q", "Use Q").SetValue(true));
-            laneclearMenu.AddItem(new MenuItem(laneclearMenu.Name + ".e", "Use E").SetValue(true));
-            laneclearMenu.AddItem(new MenuItem(laneclearMenu.Name + ".min", "Min. Hits").SetValue(new Slider(3, 1, 5)));
+            laneClearMenu.AddItem(new MenuItem(laneClearMenu.Name + ".q", "Use Q").SetValue(true));
+            laneClearMenu.AddItem(new MenuItem(laneClearMenu.Name + ".e", "Use E").SetValue(true));
+            laneClearMenu.AddItem(new MenuItem(laneClearMenu.Name + ".min", "Min. Hits").SetValue(new Slider(3, 1, 5)));
+
+            var jungleClearMenu = Menu.AddSubMenu(new Menu("Jungle Clear", Menu.Name + ".jungle-clear"));
+            ResourceManager.AddToMenu(
+                jungleClearMenu,
+                new ResourceManagerArgs(
+                    "jungle-clear-q", ResourceType.Mana, ResourceValueType.Percent, ResourceCheckType.Minimum)
+                {
+                    Prefix = "Q",
+                    Advanced = true,
+                    LevelRanges = new SortedList<int, int> { { 1, 6 }, { 6, 12 }, { 12, 18 } },
+                    DefaultValues = new List<int> { 30, 10, 10 }
+                });
+            ResourceManager.AddToMenu(
+                jungleClearMenu,
+                new ResourceManagerArgs(
+                    "jungle-clear-e", ResourceType.Mana, ResourceValueType.Percent, ResourceCheckType.Minimum)
+                {
+                    Prefix = "E",
+                    Advanced = true,
+                    LevelRanges = new SortedList<int, int> { { 1, 6 }, { 6, 12 }, { 12, 18 } },
+                    DefaultValues = new List<int> { 30, 10, 10 }
+                });
+            jungleClearMenu.AddItem(new MenuItem(jungleClearMenu.Name + ".q", "Use Q").SetValue(true));
+            jungleClearMenu.AddItem(new MenuItem(jungleClearMenu.Name + ".e", "Use E").SetValue(true));
 
             var fleeMenu = Menu.AddSubMenu(new Menu("Flee", Menu.Name + ".flee"));
             fleeMenu.AddItem(new MenuItem(fleeMenu.Name + ".e", "Use E").SetValue(true));
@@ -235,7 +257,9 @@ namespace SFXVarus.Champions
                 }, true);
             BestTargetOnlyManager.AddToMenu(eGapcloserMenu, "e-gapcloser");
 
-            Weights.AddItem(new Weights.Item("w-stacks", "W Stacks", 5, false, t => GetWStacks(t) + 1));
+            TargetSelector.Weights.Register(
+                new TargetSelector.Weights.Item(
+                    "w-stacks", "W Stacks", 5, false, t => GetWStacks(t), "High amount of W Stacks = Higher Weight"));
 
             IndicatorManager.AddToMenu(DrawingManager.Menu, true);
             IndicatorManager.Add("Q", hero => Q.IsReady() ? Q.GetDamage(hero, 1) : 0);
@@ -404,7 +428,7 @@ namespace SFXVarus.Champions
 
         private bool QMaxRangeHit(Obj_AI_Hero target)
         {
-            var delay = (Q.ChargeDuration / 1000f) *
+            var delay = Q.ChargeDuration / 1000f *
                         ((Q.Range - Q.ChargedMinRange) / (Q.ChargedMaxRange - Q.ChargedMinRange));
             return
                 Utils.PositionAfter(
@@ -432,13 +456,13 @@ namespace SFXVarus.Champions
             var chargePercentage = Q.Range / Q.ChargedMaxRange;
             var damage =
                 (float)
-                    ((new float[] { 10, 47, 83, 120, 157 }[Q.Level - 1] +
-                      new float[] { 5, 23, 42, 60, 78 }[Q.Level - 1] * chargePercentage) +
-                     (chargePercentage * (Player.TotalAttackDamage() + Player.TotalAttackDamage * .6)));
+                    (new float[] { 10, 47, 83, 120, 157 }[Q.Level - 1] +
+                     new float[] { 5, 23, 42, 60, 78 }[Q.Level - 1] * chargePercentage +
+                     chargePercentage * (Player.TotalAttackDamage() + Player.TotalAttackDamage * .6));
             var minimum = damage / 100f * 33f;
             for (var i = 0; i < collisions; i++)
             {
-                var reduce = (damage / 100f * 15f);
+                var reduce = damage / 100f * 15f;
                 if (damage - reduce < minimum)
                 {
                     damage = minimum;
@@ -656,7 +680,7 @@ namespace SFXVarus.Champions
                     {
                         Casting.Farm(
                             Q, minions,
-                            (Game.Time - _lastLaneClearQStart > 3 ? 1 : (minions.Count < min ? minions.Count : min)));
+                            Game.Time - _lastLaneClearQStart > 3 ? 1 : (minions.Count < min ? minions.Count : min));
                     }
                 }
             }
@@ -669,11 +693,10 @@ namespace SFXVarus.Champions
 
         protected override void JungleClear()
         {
-            var useQ = Menu.Item(Menu.Name + ".lane-clear.q").GetValue<bool>() && Q.IsReady() &&
-                       (ResourceManager.Check("lane-clear-q") || Q.IsCharging ||
-                        ResourceManager.IgnoreJungle("lane-clear-q"));
-            var useE = Menu.Item(Menu.Name + ".lane-clear.e").GetValue<bool>() && E.IsReady() &&
-                       (ResourceManager.Check("lane-clear-e") || ResourceManager.IgnoreJungle("lane-clear-e"));
+            var useQ = Menu.Item(Menu.Name + ".jungle-clear.q").GetValue<bool>() && Q.IsReady() &&
+                       (ResourceManager.Check("jungle-clear-q") || Q.IsCharging);
+            var useE = Menu.Item(Menu.Name + ".jungle-clear.e").GetValue<bool>() && E.IsReady() &&
+                       ResourceManager.Check("jungle-clear-e");
             if (useQ)
             {
                 var minions = MinionManager.GetMinions(
@@ -755,8 +778,7 @@ namespace SFXVarus.Champions
                             for (var i = 0; 3 > i; i++)
                             {
                                 Drawing.DrawLine(
-                                    x + (i * 20), y, x + (i * 20) + 10, y, 10,
-                                    (i > stacks ? Color.DarkGray : Color.Orange));
+                                    x + i * 20, y, x + i * 20 + 10, y, 10, i > stacks ? Color.DarkGray : Color.Orange);
                             }
                         }
                     }

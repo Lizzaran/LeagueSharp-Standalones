@@ -27,7 +27,7 @@ using LeagueSharp;
 using LeagueSharp.Common;
 using SFXVarus.Interfaces;
 using SFXVarus.Library.Logger;
-using Orbwalking = SFXVarus.Wrappers.Orbwalking;
+using Orbwalking = SFXVarus.SFXTargetSelector.Orbwalking;
 
 #endregion
 

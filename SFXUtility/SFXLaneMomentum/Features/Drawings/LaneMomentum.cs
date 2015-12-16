@@ -86,6 +86,19 @@ namespace SFXLaneMomentum.Features.Drawings
             OnLoad();
         }
 
+        protected override List<Utility.Map.MapType> BlacklistedMaps
+        {
+            get
+            {
+                return new List<Utility.Map.MapType>
+                {
+                    Utility.Map.MapType.CrystalScar,
+                    Utility.Map.MapType.HowlingAbyss,
+                    Utility.Map.MapType.TwistedTreeline
+                };
+            }
+        }
+
         public override string Name
         {
             get { return "Lane Momentum"; }
@@ -126,14 +139,14 @@ namespace SFXLaneMomentum.Features.Drawings
 
                     for (var i = 0; i < 3; i++)
                     {
-                        var difference = (i == 0
+                        var difference = i == 0
                             ? _topChaos - _topOrder
-                            : (i == 1 ? _midChaos - _midOrder : _botChaos - _botOrder));
+                            : (i == 1 ? _midChaos - _midOrder : _botChaos - _botOrder);
                         var chaosWins = difference > 0;
                         difference = Math.Abs(difference);
                         if (difference > 0)
                         {
-                            var pWidth = (barWidth / 2f) / maxWeight * Math.Min(maxWeight, difference);
+                            var pWidth = barWidth / 2f / maxWeight * Math.Min(maxWeight, difference);
                             _line.Width = barHeight;
                             _line.Begin();
                             if (chaosWins)
@@ -217,7 +230,7 @@ namespace SFXLaneMomentum.Features.Drawings
             base.OnDisable();
         }
 
-        protected override sealed void OnLoad()
+        protected sealed override void OnLoad()
         {
             try
             {
@@ -298,12 +311,6 @@ namespace SFXLaneMomentum.Features.Drawings
         {
             try
             {
-                if (Utility.Map.GetMap().Type != Utility.Map.MapType.SummonersRift)
-                {
-                    OnUnload(null, new UnloadEventArgs(true));
-                    return;
-                }
-
                 #region Regions
 
                 _topRegion.Add(new Vector3(1576.24f, 1902.23f, 94.70f));
@@ -647,7 +654,7 @@ namespace SFXLaneMomentum.Features.Drawings
                     (int)
                         (minion.IsMelee
                             ? points / 100f * minion.HealthPercent
-                            : points - (points / 100f * minion.HealthPercent * 0.75f));
+                            : points - points / 100f * minion.HealthPercent * 0.75f);
 
                 return points;
             }

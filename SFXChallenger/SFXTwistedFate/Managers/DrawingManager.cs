@@ -37,7 +37,7 @@ using Utils = SFXTwistedFate.Helpers.Utils;
 
 namespace SFXTwistedFate.Managers
 {
-    internal class DrawingManager
+    public class DrawingManager
     {
         private static IChampion _champion;
         private static bool _separator;

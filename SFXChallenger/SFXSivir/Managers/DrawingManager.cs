@@ -37,7 +37,7 @@ using Utils = SFXSivir.Helpers.Utils;
 
 namespace SFXSivir.Managers
 {
-    internal class DrawingManager
+    public class DrawingManager
     {
         private static IChampion _champion;
         private static bool _separator;

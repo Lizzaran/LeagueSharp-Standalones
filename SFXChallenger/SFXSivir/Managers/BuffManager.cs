@@ -36,7 +36,7 @@ using SFXSivir.Library.Logger;
 
 namespace SFXSivir.Managers
 {
-    internal static class BuffManager
+    public static class BuffManager
     {
         private static readonly Dictionary<string, Tuple<Menu, List<BuffType>, bool>> Menues =
             new Dictionary<string, Tuple<Menu, List<BuffType>, bool>>();

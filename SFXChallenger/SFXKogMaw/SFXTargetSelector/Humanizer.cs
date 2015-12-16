@@ -2,20 +2,20 @@
 
 /*
  Copyright 2014 - 2015 Nikita Bernthaler
- Humanizer.cs is part of SFXKogMaw.
+ Humanizer.cs is part of SFXTargetSelector.
 
- SFXKogMaw is free software: you can redistribute it and/or modify
+ SFXTargetSelector is free software: you can redistribute it and/or modify
  it under the terms of the GNU General Public License as published by
  the Free Software Foundation, either version 3 of the License, or
  (at your option) any later version.
 
- SFXKogMaw is distributed in the hope that it will be useful,
+ SFXTargetSelector is distributed in the hope that it will be useful,
  but WITHOUT ANY WARRANTY; without even the implied warranty of
  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
  GNU General Public License for more details.
 
  You should have received a copy of the GNU General Public License
- along with SFXKogMaw. If not, see <http://www.gnu.org/licenses/>.
+ along with SFXTargetSelector. If not, see <http://www.gnu.org/licenses/>.
 */
 
 #endregion License
@@ -27,49 +27,53 @@ using System.Collections.Generic;
 using System.Linq;
 using LeagueSharp;
 using LeagueSharp.Common;
-using SFXKogMaw.Library.Logger;
 
 #endregion
 
 namespace SFXKogMaw.SFXTargetSelector
 {
-    public class Humanizer
+    public static partial class TargetSelector
     {
-        private static Menu _mainMenu;
-
-        internal static void AddToMenu(Menu mainMenu)
+        public static class Humanizer
         {
-            try
-            {
-                _mainMenu = mainMenu;
+            public const int MinDelay = 0;
+            public const int MaxDelay = 1500;
+            private static int _fowDelay = 250;
 
-                _mainMenu.AddItem(
-                    new MenuItem(_mainMenu.Name + ".fow", "Target Acquire Delay").SetShared()
-                        .SetValue(new Slider(350, 0, 1500)));
-            }
-            catch (Exception ex)
+            public static int FowDelay
             {
-                Global.Logger.AddItem(new LogItem(ex));
-            }
-        }
-
-        public static IEnumerable<Targets.Item> FilterTargets(IEnumerable<Targets.Item> targets)
-        {
-            var finalTargets = targets.ToList();
-            try
-            {
-                var fowDelay = _mainMenu.Item(_mainMenu.Name + ".fow").GetValue<Slider>().Value;
-                if (fowDelay > 0)
+                get { return _fowDelay; }
+                set
                 {
-                    finalTargets =
-                        finalTargets.Where(item => Game.Time - item.LastVisibleChange > fowDelay / 1000f).ToList();
+                    _fowDelay = Math.Min(MaxDelay, Math.Max(MinDelay, value));
+                    Utils.UpdateMenuItem(Menu, ".fow", _fowDelay);
                 }
             }
-            catch (Exception ex)
+
+            internal static void AddToMainMenu()
             {
-                Global.Logger.AddItem(new LogItem(ex));
+                Menu.AddItem(
+                    new MenuItem(Menu.Name + ".fow", "Target Acquire Delay").SetShared()
+                        .SetValue(new Slider(_fowDelay, MinDelay, MaxDelay))).ValueChanged +=
+                    (sender, args) => _fowDelay = args.GetNewValue<Slider>().Value;
+
+                _fowDelay = Utils.GetMenuItemValue<int>(Menu, ".fow");
             }
-            return finalTargets;
+
+            public static IEnumerable<Targets.Item> FilterTargets(IEnumerable<Targets.Item> targets)
+            {
+                if (targets == null)
+                {
+                    return new List<Targets.Item>();
+                }
+                var finalTargets = targets.ToList();
+                if (FowDelay > 0)
+                {
+                    finalTargets =
+                        finalTargets.Where(item => Game.Time - item.LastVisibleChange > FowDelay / 1000f).ToList();
+                }
+                return finalTargets;
+            }
         }
     }
 }

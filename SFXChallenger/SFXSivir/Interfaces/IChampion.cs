@@ -24,14 +24,14 @@
 
 using System.Collections.Generic;
 using LeagueSharp.Common;
-using Orbwalking = SFXSivir.Wrappers.Orbwalking;
+using Orbwalking = SFXSivir.SFXTargetSelector.Orbwalking;
 using Spell = SFXSivir.Wrappers.Spell;
 
 #endregion
 
 namespace SFXSivir.Interfaces
 {
-    internal interface IChampion
+    public interface IChampion
     {
         Menu SFXMenu { get; }
         Menu Menu { get; }

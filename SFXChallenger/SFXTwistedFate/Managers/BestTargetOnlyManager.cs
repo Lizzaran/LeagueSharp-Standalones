@@ -34,7 +34,7 @@ using TargetSelector = SFXTwistedFate.SFXTargetSelector.TargetSelector;
 
 namespace SFXTwistedFate.Managers
 {
-    internal class BestTargetOnlyManager
+    public class BestTargetOnlyManager
     {
         private static readonly Dictionary<string, Menu> Menues = new Dictionary<string, Menu>();
 

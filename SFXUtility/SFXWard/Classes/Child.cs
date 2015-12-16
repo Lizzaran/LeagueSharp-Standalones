@@ -94,6 +94,7 @@ namespace SFXWard.Classes
                 {
                     OnEnable();
                 }
+
                 Handled = true;
             }
             catch (Exception ex)

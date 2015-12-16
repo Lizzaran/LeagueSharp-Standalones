@@ -34,7 +34,7 @@ using TargetSelector = SFXKogMaw.SFXTargetSelector.TargetSelector;
 
 namespace SFXKogMaw.Managers
 {
-    internal class BestTargetOnlyManager
+    public class BestTargetOnlyManager
     {
         private static readonly Dictionary<string, Menu> Menues = new Dictionary<string, Menu>();
 

@@ -94,6 +94,7 @@ namespace SFXLaneMomentum.Classes
                 {
                     OnEnable();
                 }
+
                 Handled = true;
             }
             catch (Exception ex)

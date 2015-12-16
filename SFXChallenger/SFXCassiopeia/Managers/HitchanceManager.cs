@@ -33,7 +33,7 @@ using Spell = SFXCassiopeia.Wrappers.Spell;
 
 namespace SFXCassiopeia.Managers
 {
-    internal static class HitchanceManager
+    public static class HitchanceManager
     {
         private const int MinHitChance = 3;
         private static readonly Dictionary<string, Menu> Menues = new Dictionary<string, Menu>();

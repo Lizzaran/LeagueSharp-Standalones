@@ -36,7 +36,7 @@ using SFXKalista.Library.Logger;
 
 namespace SFXKalista.Managers
 {
-    internal class InitiatorManager
+    public class InitiatorManager
     {
         private static Menu _menu;
         private static readonly HashSet<SpellData> Initiators;
@@ -202,9 +202,9 @@ namespace SFXKalista.Managers
                             if (spell != null)
                             {
                                 Name = spell.Name;
-                                Range = (spell.SData.CastRange > spell.SData.CastRangeDisplayOverride + 1000
+                                Range = spell.SData.CastRange > spell.SData.CastRangeDisplayOverride + 1000
                                     ? spell.SData.CastRangeDisplayOverride
-                                    : spell.SData.CastRange);
+                                    : spell.SData.CastRange;
                             }
                         }
                     }

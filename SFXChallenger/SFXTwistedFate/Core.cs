@@ -27,7 +27,7 @@ using LeagueSharp;
 using LeagueSharp.Common;
 using SFXTwistedFate.Interfaces;
 using SFXTwistedFate.Library.Logger;
-using Orbwalking = SFXTwistedFate.Wrappers.Orbwalking;
+using Orbwalking = SFXTwistedFate.SFXTargetSelector.Orbwalking;
 
 #endregion
 

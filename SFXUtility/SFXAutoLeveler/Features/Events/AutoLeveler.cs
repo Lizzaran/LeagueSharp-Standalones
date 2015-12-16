@@ -84,7 +84,7 @@ namespace SFXAutoLeveler.Features.Events
                 }.ToList();
         }
 
-        protected override sealed void OnLoad()
+        protected sealed override void OnLoad()
         {
             try
             {

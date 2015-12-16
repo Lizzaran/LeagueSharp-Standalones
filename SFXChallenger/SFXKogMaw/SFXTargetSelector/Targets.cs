@@ -24,65 +24,60 @@
 
 using System;
 using System.Collections.Generic;
+using System.Collections.ObjectModel;
 using System.Linq;
 using LeagueSharp;
+using LeagueSharp.Common;
 using SFXKogMaw.Library;
-using SFXKogMaw.Library.Logger;
 
 #endregion
 
 namespace SFXKogMaw.SFXTargetSelector
 {
-    public static class Targets
+    public static partial class TargetSelector
     {
-        static Targets()
+        public static class Targets
         {
-            try
+            private static readonly List<Item> PItems;
+
+            static Targets()
             {
-                Items = new HashSet<Item>();
-                foreach (var enemy in GameObjects.EnemyHeroes)
+                PItems = new List<Item>();
+                CustomEvents.Game.OnGameLoad += delegate
                 {
-                    Items.Add(new Item(enemy));
-                }
-                Core.OnPreUpdate += OnCorePreUpdate;
+                    PItems.AddRange(GameObjects.EnemyHeroes.Select(e => new Item(e)));
+                    Game.OnUpdate += OnGameUpdate;
+                };
             }
-            catch (Exception ex)
+
+            public static ReadOnlyCollection<Item> Items
             {
-                Global.Logger.AddItem(new LogItem(ex));
+                get { return PItems.AsReadOnly(); }
             }
-        }
 
-        public static HashSet<Item> Items { get; private set; }
-
-        private static void OnCorePreUpdate(EventArgs args)
-        {
-            try
+            private static void OnGameUpdate(EventArgs args)
             {
-                foreach (var item in Items.Where(item => item.Visible != !item.Hero.IsVisible))
+                foreach (var item in PItems.Where(item => item.Visible != !item.Hero.IsVisible))
                 {
                     item.Visible = item.Hero.IsVisible;
                     item.LastVisibleChange = Game.Time;
                 }
             }
-            catch (Exception ex)
-            {
-                Global.Logger.AddItem(new LogItem(ex));
-            }
-        }
 
-        public class Item
-        {
-            public Item(Obj_AI_Hero hero)
+            public class Item
             {
-                Hero = hero;
-                LastVisibleChange = Game.Time;
-            }
+                public Item(Obj_AI_Hero hero)
+                {
+                    Hero = hero;
+                    LastVisibleChange = Game.Time;
+                }
 
-            public Obj_AI_Hero Hero { get; private set; }
-            public float Weight { get; set; }
-            public float SimulatedWeight { get; set; }
-            public float LastVisibleChange { get; set; }
-            public bool Visible { get; set; }
+                public Obj_AI_Hero Hero { get; private set; }
+                public float Weight { get; set; }
+                public float SimulatedWeight { get; set; }
+                public float LastVisibleChange { get; set; }
+                public bool Visible { get; set; }
+            }
         }
     }
 }

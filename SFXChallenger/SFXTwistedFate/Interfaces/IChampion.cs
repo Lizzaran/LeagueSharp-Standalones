@@ -24,14 +24,14 @@
 
 using System.Collections.Generic;
 using LeagueSharp.Common;
-using Orbwalking = SFXTwistedFate.Wrappers.Orbwalking;
+using Orbwalking = SFXTwistedFate.SFXTargetSelector.Orbwalking;
 using Spell = SFXTwistedFate.Wrappers.Spell;
 
 #endregion
 
 namespace SFXTwistedFate.Interfaces
 {
-    internal interface IChampion
+    public interface IChampion
     {
         Menu SFXMenu { get; }
         Menu Menu { get; }

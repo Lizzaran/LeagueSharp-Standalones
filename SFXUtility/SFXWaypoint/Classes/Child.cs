@@ -94,6 +94,7 @@ namespace SFXWaypoint.Classes
                 {
                     OnEnable();
                 }
+
                 Handled = true;
             }
             catch (Exception ex)

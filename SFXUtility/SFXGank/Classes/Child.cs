@@ -94,6 +94,7 @@ namespace SFXGank.Classes
                 {
                     OnEnable();
                 }
+
                 Handled = true;
             }
             catch (Exception ex)

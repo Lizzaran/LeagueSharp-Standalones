@@ -24,14 +24,14 @@
 
 using System.Collections.Generic;
 using LeagueSharp.Common;
-using Orbwalking = SFXOrianna.Wrappers.Orbwalking;
+using Orbwalking = SFXOrianna.SFXTargetSelector.Orbwalking;
 using Spell = SFXOrianna.Wrappers.Spell;
 
 #endregion
 
 namespace SFXOrianna.Interfaces
 {
-    internal interface IChampion
+    public interface IChampion
     {
         Menu SFXMenu { get; }
         Menu Menu { get; }

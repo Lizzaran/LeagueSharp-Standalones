@@ -23,10 +23,12 @@
 #region
 
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using LeagueSharp;
 using LeagueSharp.Common;
 using SFXViktor.Library;
+using SFXViktor.Library.Extensions.NET;
 using SFXViktor.Library.Logger;
 using SharpDX;
 
@@ -36,6 +38,24 @@ namespace SFXViktor.Helpers
 {
     public static class Utils
     {
+        private static readonly List<string> BigMinionList;
+
+        static Utils()
+        {
+            BigMinionList = new List<string>
+            {
+                "SRU_Blue1.1.1",
+                "SRU_Blue7.1.1",
+                "SRU_Blue7.1.1",
+                "SRU_Red4.1.1",
+                "SRU_Red10.1.1",
+                "SRU_Dragon6.1.1",
+                "SRU_RiftHerald",
+                "SRU_Baron12.1.1",
+                "TT_Spiderboss8.1.1"
+            };
+        }
+
         public static bool IsNearTurret(this Obj_AI_Base target, float extraRange = 300f)
         {
             try
@@ -103,12 +123,12 @@ namespace SFXViktor.Helpers
         {
             try
             {
-                var additional = sender.IsMe ? (Game.Ping / 2000f) + 0.1f : 0f;
+                var additional = sender.IsMe ? Game.Ping / 2000f + 0.1f : 0f;
                 if (prediction && target is Obj_AI_Hero && target.IsMoving)
                 {
                     var predTarget = Prediction.GetPrediction(
                         target,
-                        delay + (sender.ServerPosition.Distance(target.ServerPosition) * 1.1f / speed) + additional);
+                        delay + sender.ServerPosition.Distance(target.ServerPosition) * 1.1f / speed + additional);
                     return delay + (sender.ServerPosition.Distance(predTarget.UnitPosition) * 1.1f / speed + additional);
                 }
                 return delay + (sender.ServerPosition.Distance(target.ServerPosition) / speed + additional);
@@ -145,7 +165,7 @@ namespace SFXViktor.Helpers
 
         private static float Magn(Vector2 a)
         {
-            return (float) (Math.Sqrt(a.X * a.X + a.Y * a.Y));
+            return (float) Math.Sqrt(a.X * a.X + a.Y * a.Y);
         }
 
         public static bool UnderAllyTurret(Vector3 position)
@@ -225,12 +245,11 @@ namespace SFXViktor.Helpers
                 if (!point.To3D().IsUnderTurret(false))
                 {
                     if (enemies.Count == 1 &&
-                        (!target.IsMelee ||
-                         (target.HealthPercent <= ObjectManager.Player.HealthPercent - 25 ||
-                          target.Position.Distance(point.To3D()) >= safetyDistance)) ||
+                        (!target.IsMelee || target.HealthPercent <= ObjectManager.Player.HealthPercent - 25 ||
+                         target.Position.Distance(point.To3D()) >= safetyDistance) ||
                         allies.Count >
                         enemies.Count -
-                        (ObjectManager.Player.HealthPercent >= (10 * lowEnemies.Count) ? lowEnemies.Count : 0))
+                        (ObjectManager.Player.HealthPercent >= 10 * lowEnemies.Count ? lowEnemies.Count : 0))
                     {
                         return point.To3D();
                     }
@@ -272,6 +291,28 @@ namespace SFXViktor.Helpers
                     menuItem.Show(value);
                 }
             }
+        }
+
+        public static bool IsWallBetween(Vector3 start, Vector3 end, int step = 3)
+        {
+            if (start.IsValid() && end.IsValid() && step > 0)
+            {
+                var distance = start.Distance(end);
+                for (var i = 0; i < distance; i = i + step)
+                {
+                    if (NavMesh.GetCollisionFlags(start.Extend(end, i)) == CollisionFlags.Wall)
+                    {
+                        return true;
+                    }
+                }
+            }
+            return false;
+        }
+
+        public static bool IsBigJungle(Obj_AI_Base minion)
+        {
+            return minion != null && minion.IsValid && minion.Team == GameObjectTeam.Neutral &&
+                   BigMinionList.Any(b => minion.Name.Contains(b, StringComparison.OrdinalIgnoreCase));
         }
     }
 }
